@@ -1,0 +1,4 @@
+Flask[async]>=2.2.0
+httpx>=0.24.0
+gunicorn>=20.0.0
+# Jinja2 is a Flask dependency, so not explicitly needed here

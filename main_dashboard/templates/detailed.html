@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster Detailed Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+<body>
+    <header>
+        <h1>Cluster Monitor</h1>
+        <div class="status-bar">
+            View: <a href="{{ url_for('overview_page') }}" class="{{ 'active-view' if current_view == 'overview' else '' }}">Overview</a> | 
+            <a href="{{ url_for('detailed_page') }}" class="{{ 'active-view' if current_view == 'detailed' else '' }}">Detailed</a>
+            <span style="margin-left: 20px;">Last Updated: <span id="lastUpdated">Never</span></span>
+            <span style="margin-left: 10px;">Auto-Refresh: <span id="refreshStatus">ON</span> 
+                (<a href="#" id="toggleRefresh">Toggle</a>)</span>
+            <span style="margin-left: 10px;">
+                Interval (s): <input type="number" id="refreshIntervalInput" value="15" min="1" max="300" style="width: 50px; padding: 1px 3px;">
+            </span>
+            <button id="reloadConfigBtn" style="margin-left:10px;">Reload Host Config</button>
+        </div>
+    </header>
+
+    <main id="dashboardContainer" class="detailed-container">
+        <p id="loadingMessage">Loading data for configured hosts...</p>
+    </main>
+
+    <footer>
+        <p>Monitoring Dashboard</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        const initialHostsConfig = {{ initial_hosts_config | tojson }};
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeDashboard(initialHostsConfig, 'detailed'); // Pass view type
+        });
+    </script>
+</body>
+</html>

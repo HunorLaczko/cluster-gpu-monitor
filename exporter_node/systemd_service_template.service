@@ -1,0 +1,30 @@
+[Unit]
+Description=System and GPU Metrics Exporter Service
+After=network.target
+
+[Service]
+# Replace <REMOTE_USER> with the actual username the service should run as
+User={{REMOTE_USER}}
+# Group={{REMOTE_GROUP}} # Optional: specify group
+
+# Define the working directory where exporter.py and start_exporter.sh are located
+WorkingDirectory={{DEPLOY_PATH}}
+
+# Command to start the service
+# Ensure start_exporter.sh is executable (chmod +x start_exporter.sh)
+ExecStart={{DEPLOY_PATH}}/start_exporter.sh
+
+# Restart policy
+Restart=always
+RestartSec=5s
+
+# Standard output and error logging
+# By default, output goes to journald (view with journalctl -u metrics_exporter.service)
+# StandardOutput=append:{{DEPLOY_PATH}}/exporter_stdout.log # Uncomment to log to file
+# StandardError=append:{{DEPLOY_PATH}}/exporter_stderr.log  # Uncomment to log to file
+
+# Environment variables (if any needed by the app)
+# Environment="MY_VARIABLE=value"
+
+[Install]
+WantedBy=multi-user.target

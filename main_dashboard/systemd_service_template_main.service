@@ -1,0 +1,23 @@
+[Unit]
+Description=Main Monitoring Dashboard Service
+After=network.target
+# If this dashboard relies on the local exporter being up, add:
+# Wants=metrics_exporter.service 
+# After=metrics_exporter.service
+
+[Service]
+# Replace <DASHBOARD_USER> with the actual username the service should run as
+User={{DASHBOARD_USER}}
+# Group={{DASHBOARD_GROUP}} # Optional
+
+WorkingDirectory={{DASHBOARD_DEPLOY_PATH}}
+ExecStart={{DASHBOARD_DEPLOY_PATH}}/start_main_app.sh
+
+Restart=always
+RestartSec=10s
+
+# StandardOutput=append:{{DASHBOARD_DEPLOY_PATH}}/dashboard_stdout.log
+# StandardError=append:{{DASHBOARD_DEPLOY_PATH}}/dashboard_stderr.log
+
+[Install]
+WantedBy=multi-user.target

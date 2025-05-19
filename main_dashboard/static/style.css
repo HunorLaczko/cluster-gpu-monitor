@@ -1,0 +1,414 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    background-color: #f0f2f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+header {
+    background-color: #007bff;
+    color: white;
+    padding: 1rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+}
+
+.status-bar {
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+.status-bar a, .status-bar button {
+    color: #ffc107;
+    text-decoration: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.85rem;
+}
+.status-bar button:hover, .status-bar a:hover { /* Combined hover style */
+    text-decoration: underline;
+}
+
+/* View navigation active state */
+.status-bar a.active-view {
+    background-color: #ffc107;
+    color: #333;
+    font-weight: bold;
+    padding: 2px 5px; /* Added padding for active view link */
+    border-radius: 3px; /* Added border-radius for active view link */
+}
+
+/* Main container general styles - applied via class in HTML now */
+main {
+    padding: 1.5rem;
+}
+
+/* Detailed view container styles */
+.detailed-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem; /* Your existing gap from previous 'main' */
+    justify-content: center;
+}
+
+/* Host card for DETAILED view (your existing .host-card styles) */
+.host-card {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 1rem 1.5rem; /* Adjusted from your original for consistency */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    width: 100%;
+    max-width: 700px;
+    min-width: 300px;
+    transition: box-shadow 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.host-card:hover {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+}
+
+.host-card h2 {
+    color: #0056b3;
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    font-size: 1.4rem;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.host-card h2 .hostname-link {
+    font-size: 0.7em;
+    color: #555;
+    text-decoration: none;
+}
+.host-card h2 .hostname-link:hover {
+    text-decoration: underline;
+}
+
+.host-card .error-message { /* Shared error message style */
+    color: #dc3545;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+/* Detailed view section titles and grids */
+.stats-section { /* Used in detailed.html */
+    margin-bottom: 15px;
+}
+.section-title { /* Used in detailed.html */
+    font-size: 1.1rem;
+    color: #333;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+.metrics-grid { /* Used in detailed.html */
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.metric-item { /* Used in detailed.html */
+    background-color: #f8f9fa;
+    padding: 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #e9ecef;
+}
+.metric-item strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #555;
+}
+
+/* Progress bar container for DETAILED view */
+.progress-bar-container {
+    width: 100%;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 0.25rem;
+    height: 20px;
+}
+
+/* Progress bar for DETAILED view */
+.progress-bar {
+    height: 100%;
+    background-color: #28a745; /* Green */
+    text-align: center;
+    line-height: 20px;
+    color: white;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transition: width 0.5s ease-in-out;
+}
+.progress-bar.high-usage { background-color: #ffc107; }
+.progress-bar.critical-usage { background-color: #dc3545; }
+
+/* GPU card for DETAILED view */
+.gpu-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: #fdfdfd;
+}
+.gpu-card h4 {
+    margin-top: 0;
+    color: #17a2b8; /* Teal */
+    font-size: 1.2rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Processes table for DETAILED view */
+.processes-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+    font-size: 0.85em;
+}
+.processes-table th, .processes-table td {
+    text-align: left;
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+}
+.processes-table th {
+    background-color: #e9ecef;
+    font-weight: 600;
+}
+.processes-table td .command {
+    word-break: break-all;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.processes-table td .command:hover {
+    white-space: normal;
+    overflow: visible;
+}
+
+/* Overview specific styles */
+.overview-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); /* Adjust minmax for desired card size */
+    gap: 1rem;
+    /* padding already handled by main in this case */
+}
+
+.overview-host-card {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+    font-size: 0.9em;
+    display: flex;
+    flex-direction: column; /* Important for footer timestamp */
+}
+.overview-host-card:hover { /* Optional hover for overview cards */
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.overview-host-card h2 {
+    color: #0056b3;
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 0.3rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.overview-host-card h2 .hostname-link {
+    font-size: 0.8em;
+    color: #666;
+    text-decoration: none;
+}
+.overview-host-card h2 .hostname-link:hover {
+    text-decoration: underline;
+}
+.overview-host-card h2 .status-dot {
+    height: 8px;
+    width: 8px;
+    margin-left: 3px;
+}
+
+.overview-host-card .error-message { /* Can reuse .host-card .error-message if styled identically */
+    color: #dc3545;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 0.5rem;
+    border-radius: 3px;
+    margin-bottom: 0.5rem;
+    font-size: 0.85em;
+}
+
+.overview-section-title { /* Not used in the new overview card structure, but kept if needed */
+    font-size: 0.95rem;
+    color: #333;
+    margin-top: 0.5rem;
+    margin-bottom: 0.3rem;
+    font-weight: 600;
+}
+
+.overview-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.overview-metric-item {
+    background-color: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 3px;
+    border: 1px solid #e9ecef;
+}
+.overview-metric-item strong { /* Already defined in .metric-item strong, but can be specific */
+    display: block;
+    font-size: 0.9em;
+    margin-bottom: 0.1rem;
+    color: #555;
+}
+.overview-metric-item .metric-value {
+    font-size: 1em;
+    font-weight: bold;
+}
+
+.overview-progress-bar-container {
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 0.2rem;
+    height: 12px;
+}
+
+.overview-progress-bar {
+    height: 100%;
+    background-color: #28a745;
+    text-align: center;
+    line-height: 12px;
+    color: white;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    transition: width 0.3s ease-in-out;
+}
+.overview-progress-bar.high-usage { background-color: #ffc107; }
+.overview-progress-bar.critical-usage { background-color: #dc3545; }
+
+.overview-gpu-card {
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 0.6rem 0.5rem; /* Adjusted padding */
+    margin-top: 0.5rem;
+    background-color: #fdfdfd;
+}
+.overview-gpu-card h4 {
+    margin-top: 0;
+    margin-bottom: 0.4rem; /* Adjusted margin */
+    font-size: 1rem;
+    color: #17a2b8;
+}
+.overview-gpu-card .gpu-metrics-condensed {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.3rem;
+}
+.overview-gpu-card .gpu-metric-pair {
+    font-size: 0.85em;
+}
+.overview-gpu-card .gpu-metric-pair strong {
+    color: #555;
+}
+
+.overview-gpu-processes {
+    font-size: 0.8em;
+    color: #666;
+    margin-top: 0.3rem;
+}
+.overview-gpu-processes strong {
+    color: #444;
+    display: block; /* Make "Users:" take its own line before list */
+    margin-bottom: 2px;
+}
+.overview-gpu-processes ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin: 0.2rem 0 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px; /* Slightly reduced gap */
+}
+.overview-gpu-processes ul li {
+    background-color: #e9ecef;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.9em; /* Slightly smaller user tags */
+}
+.overview-gpu-processes ul li i { /* For "None" or "N/A" in italics */
+    color: #888;
+}
+
+
+/* Common Footer, Loading Message, Timestamp, Status Dots */
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    background-color: #343a40;
+    color: #f8f9fa;
+    margin-top: 2rem;
+}
+
+#loadingMessage {
+    width: 100%;
+    text-align: center;
+    font-size: 1.2rem;
+    color: #555;
+    padding: 2rem; /* Added padding to loading message */
+}
+
+.timestamp { /* Base timestamp style */
+    font-size: 0.8em;
+    color: #777;
+    text-align: right;
+}
+.host-card .timestamp { /* Specific for detailed card if needed */
+    margin-top: 10px; 
+}
+.overview-host-card .timestamp { /* Specific for overview card */
+    font-size: 0.75em;
+    margin-top: auto; /* Pushes to bottom in flex container */
+    padding-top: 0.5rem; /* Space above it */
+}
+
+
+.status-dot { /* Base status dot style */
+    height: 10px;
+    width: 10px;
+    background-color: #bbb; /* Default grey */
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+.status-dot.ok { background-color: #28a745; } /* Green */
+.status-dot.error { background-color: #dc3545; } /* Red */
+.status-dot.warning { background-color: #ffc107; } /* Yellow */
