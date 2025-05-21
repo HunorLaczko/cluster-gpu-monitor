@@ -99,19 +99,23 @@ def setup_dashboard_files(deploy_path, service_user):
     """Creates deployment directory and copies application files."""
     logger.info(f"Setting up dashboard files at {deploy_path}")
     if not os.path.exists(deploy_path):
-        # This command needs sudo, which we have.
         run_command(["mkdir", "-p", deploy_path])
         logger.info(f"Created directory: {deploy_path}")
     else:
         logger.info(f"Deployment directory {deploy_path} already exists. Files will be overwritten.")
 
-    # Copy contents of DASHBOARD_APP_SRC_DIR to deploy_path
-    # Ensure the source directory itself isn't copied as a subdirectory into deploy_path
+    # Avoid copying static/templates into themselves if deploy_path is inside DASHBOARD_APP_SRC_DIR
     for item in os.listdir(DASHBOARD_APP_SRC_DIR):
         s = os.path.join(DASHBOARD_APP_SRC_DIR, item)
         d = os.path.join(deploy_path, item)
+        # Skip copying if source and destination are the same directory (prevents static/static, etc.)
+        if os.path.abspath(s) == os.path.abspath(d):
+            logger.info(f"Skipping copy of {s} into itself.")
+            continue
         if os.path.isdir(s):
-            # Use run_command for cp with sudo, as shutil might not handle permissions correctly for root-owned dest
+            # If destination exists and is a directory, remove it first to avoid nested copy
+            if os.path.exists(d) and os.path.isdir(d):
+                shutil.rmtree(d)
             run_command(["cp", "-R", s, d])
         else:
             run_command(["cp", s, d])
