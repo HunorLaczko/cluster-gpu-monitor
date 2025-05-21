@@ -78,3 +78,8 @@ A web-based dashboard to monitor CPU, RAM, and NVIDIA GPU stats (utilization, me
 ## License
 
 This project is licensed under the Apache License, Version 2.0 - see the `LICENSE` file for details.
+
+## FAQ
+
+**Q: Why not use nvitop-exporter and Grafana/Prometheus?**  
+A: This project was more fun to build, easy to customize, and does exactly what I needed.
