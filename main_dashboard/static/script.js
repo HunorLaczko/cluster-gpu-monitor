@@ -416,12 +416,20 @@ function updateDetailedHostCard(hostData) {
             }
 
             gpuCard.innerHTML = `
-                <h4>GPU ${gpu.id !== undefined ? gpu.id : 'N/A'}: ${gpu.name || 'N/A'}</h4>
-                <p>Util: <span class="gpu-util-val">${typeof gpu.utilization_gpu_percent === 'number' ? gpu.utilization_gpu_percent.toFixed(1) : 'N/A'}</span>%</p>
-                <div class="progress-bar-container"><div class="progress-bar gpu-util-progress"></div></div>
-                <p>Mem: <span class="gpu-mem-val">${typeof gpu.memory_percent === 'number' ? gpu.memory_percent.toFixed(1) : 'N/A'}</span>% 
-                   (${typeof gpu.memory_used_mib === 'number' ? gpu.memory_used_mib.toFixed(1) : 'N/A'} / ${typeof gpu.memory_total_mib === 'number' ? gpu.memory_total_mib.toFixed(1) : 'N/A'} MiB)</p>
-                <div class="progress-bar-container"><div class="progress-bar gpu-mem-progress"></div></div>
+                <h4>GPU ${gpu.id !== undefined ? gpu.id : 'N/A'}: ${cleanGpuName(gpu.name) || 'N/A'}</h4>
+                <div class="gpu-metric-row">
+                    <span class="gpu-metric-label">Util:</span>
+                    <div class="progress-bar-container"><div class="progress-bar gpu-util-progress"></div></div>
+                    <span class="gpu-metric-value gpu-util-val">${typeof gpu.utilization_gpu_percent === 'number' ? gpu.utilization_gpu_percent.toFixed(1) : 'N/A'}%</span>
+                </div>
+                <div class="gpu-metric-row">
+                    <span class="gpu-metric-label">Mem:</span>
+                    <div class="progress-bar-container"><div class="progress-bar gpu-mem-progress"></div></div>
+                    <span class="gpu-metric-value gpu-mem-val">${typeof gpu.memory_percent === 'number' ? gpu.memory_percent.toFixed(1) : 'N/A'}%</span>
+                </div>
+                <p style="text-align: right; font-size: 0.85em; margin-top: 0em; margin-bottom: 0.5em;">
+                    <small>(${typeof gpu.memory_used_mib === 'number' ? gpu.memory_used_mib.toFixed(1) : 'N/A'} / ${typeof gpu.memory_total_mib === 'number' ? gpu.memory_total_mib.toFixed(1) : 'N/A'} MiB)</small>
+                </p>
                 <p>Temp: ${typeof gpu.temperature_celsius === 'number' ? gpu.temperature_celsius : 'N/A'}°C | Fan: ${typeof gpu.fan_speed_percent === 'number' ? gpu.fan_speed_percent : 'N/A'}%</p>
                 <p>Pwr: ${typeof gpu.power_usage_watts === 'number' ? gpu.power_usage_watts.toFixed(1) : 'N/A'}W / ${typeof gpu.power_limit_watts === 'number' ? gpu.power_limit_watts.toFixed(1) : 'N/A'}W</p>
                 <div class="section-title" style="font-size:1rem; margin-top:0.5rem;">Processes</div>
@@ -516,24 +524,29 @@ function updateOverviewHostCard(hostData) {
             gpuOverviewCard.className = 'overview-gpu-card';
             
             const usernames = gpu.process_usernames || [];
-            const usernamesList = usernames.length > 0 && usernames[0] !== "N/A"
-                ? `<ul>${usernames.map(u => `<li>${u === "None" ? "<i>None</i>" : u}</li>`).join('')}</ul>`
-                : (usernames.length > 0 && usernames[0] === "N/A" ? "<ul><li><i>N/A</i></li></ul>" : "<ul><li><i>None</i></li></ul>");
+            let usernamesHtml = '';
+            if (usernames.length > 0 && usernames[0] !== "N/A" && usernames[0] !== "None") {
+                usernamesHtml = usernames.map(u => `<li class="overview-user-tag">${u}</li>`).join('');
+            } else if (usernames.length > 0 && (usernames[0] === "N/A" || usernames[0] === "None")) {
+                usernamesHtml = `<li class="overview-user-tag"><i>${usernames[0]}</i></li>`;
+            } else { // Should ideally not happen if python sends ["None"] for empty
+                usernamesHtml = "<li class=\"overview-user-tag\"><i>None</i></li>";
+            }
 
             gpuOverviewCard.innerHTML = `
-                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(gpu.name || 'N/A').substring(0,15)}${(gpu.name && gpu.name.length > 15 ? "..." : "")}</span></h4>
-                <div class="gpu-metrics-condensed">
-                    <span class="gpu-metric-pair"><strong>Util:</strong> ${typeof gpu.utilization_gpu_percent === 'number' ? gpu.utilization_gpu_percent.toFixed(0) : 'N/A'}%</span>
-                    <span class="gpu-metric-pair"><strong>Mem:</strong> ${typeof gpu.memory_percent === 'number' ? gpu.memory_percent.toFixed(0) : 'N/A'}%</span>
+                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(cleanGpuName(gpu.name) || 'N/A').substring(0,15)}${(gpu.name && cleanGpuName(gpu.name).length > 15 ? "..." : "")}</span></h4>
+                <div class="gpu-metric-row overview-gpu-metric-row">
+                    <span class="gpu-metric-label">Util:</span>
+                    <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-util-progress"></div></div>
+                    <span class="gpu-metric-value">${typeof gpu.utilization_gpu_percent === 'number' ? gpu.utilization_gpu_percent.toFixed(0) : 'N/A'}%</span>
                 </div>
-                <div class="overview-progress-bar-container" style="height:8px; margin-top:2px; margin-bottom: 4px;">
-                    <div class="overview-progress-bar gpu-util-progress"></div>
-                </div>
-                 <div class="overview-progress-bar-container" style="height:8px; margin-bottom: 4px;">
-                    <div class="overview-progress-bar gpu-mem-progress"></div>
+                <div class="gpu-metric-row overview-gpu-metric-row">
+                    <span class="gpu-metric-label">Mem:</span>
+                    <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-mem-progress"></div></div>
+                    <span class="gpu-metric-value">${typeof gpu.memory_percent === 'number' ? gpu.memory_percent.toFixed(0) : 'N/A'}%</span>
                 </div>
                 <div class="overview-gpu-processes">
-                    <strong>Users:</strong> ${usernamesList}
+                    <strong>Users:</strong> <ul class="overview-user-list">${usernamesHtml}</ul>
                 </div>
             `;
             updateProgressBar(gpuOverviewCard, '.gpu-util-progress', gpu.utilization_gpu_percent || 0, 'overview', false);
@@ -553,6 +566,13 @@ function updateOverviewHostCard(hostData) {
         }
         if (statusDot && statusDot.className === 'status-dot ok') statusDot.className = 'status-dot warning';
     }
+}
+
+// Helper to clean GPU names
+function cleanGpuName(name) {
+    if (!name || typeof name !== 'string') return name;
+    // Remove NVIDIA, Nvidia, GeForce, RTX, Generation (case-insensitive, word boundaries)
+    return name.replace(/\b(NVIDIA|Nvidia|GeForce|RTX|Generation)\b/gi, '').replace(/\s+/g, ' ').trim();
 }
 
 function setNodeText(parent, selector, text) {
