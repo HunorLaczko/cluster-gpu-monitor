@@ -393,6 +393,12 @@ function updateDetailedHostCard(hostData) {
 
             const gpuCard = document.createElement('div');
             gpuCard.className = 'gpu-card'; 
+
+            // Calculate total GPU memory in GB (rounded up)
+            let totalMemGB = null;
+            if (typeof gpu.memory_total_mib === 'number') {
+                totalMemGB = Math.ceil(gpu.memory_total_mib / 1024);
+            }
             
             let processesTable = '<p>No process data.</p>';
             if (gpu.processes && Array.isArray(gpu.processes) && gpu.processes.length > 0 && !(gpu.processes[0] && gpu.processes[0].error_detail)) {
@@ -416,7 +422,7 @@ function updateDetailedHostCard(hostData) {
             }
 
             gpuCard.innerHTML = `
-                <h4>GPU ${gpu.id !== undefined ? gpu.id : 'N/A'}: ${cleanGpuName(gpu.name) || 'N/A'}</h4>
+                <h4>GPU ${gpu.id !== undefined ? gpu.id : 'N/A'}: ${cleanGpuName(gpu.name) || 'N/A'}${totalMemGB !== null ? ` (${totalMemGB} GB)` : ''}</h4>
                 <div class="gpu-metric-row">
                     <span class="gpu-metric-label">Util:</span>
                     <div class="progress-bar-container"><div class="progress-bar gpu-util-progress"></div></div>
@@ -522,7 +528,13 @@ function updateOverviewHostCard(hostData) {
             hasValidGpu = true;
             const gpuOverviewCard = document.createElement('div');
             gpuOverviewCard.className = 'overview-gpu-card';
-            
+
+            // Calculate total GPU memory in GB (rounded up)
+            let totalMemGB = null;
+            if (typeof gpu.memory_total_mib === 'number') {
+                totalMemGB = Math.ceil(gpu.memory_total_mib / 1024);
+            }
+
             const usernames = gpu.process_usernames || [];
             let usernamesHtml = '';
             if (usernames.length > 0 && usernames[0] !== "N/A" && usernames[0] !== "None") {
@@ -534,7 +546,7 @@ function updateOverviewHostCard(hostData) {
             }
 
             gpuOverviewCard.innerHTML = `
-                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(cleanGpuName(gpu.name) || 'N/A').substring(0,15)}${(gpu.name && cleanGpuName(gpu.name).length > 15 ? "..." : "")}</span></h4>
+                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(cleanGpuName(gpu.name) || 'N/A').substring(0,15)}${(gpu.name && cleanGpuName(gpu.name).length > 15 ? "..." : "")}${totalMemGB !== null ? ` (${totalMemGB} GB)` : ''}</span></h4>
                 <div class="gpu-metric-row overview-gpu-metric-row">
                     <span class="gpu-metric-label">Util:</span>
                     <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-util-progress"></div></div>
