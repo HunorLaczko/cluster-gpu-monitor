@@ -18,16 +18,109 @@ app = FastAPI(
     version="1.0.3" # Incremented version for these fixes
 )
 
+def get_disk_metrics() -> List[Dict[str, Any]]:
+    """Collects disk usage for critical paths and /data-local mounts."""
+    disk_entries: List[Dict[str, Any]] = []
+    targets: List[Dict[str, str]] = []
+
+    targets.append({"path": "/", "label": "Root (/)"})
+
+    docker_path = "/var/lib/docker"
+    if os.path.exists(docker_path):
+        targets.append({"path": docker_path, "label": "Docker (/var/lib/docker)"})
+
+    data_local_root = "/data-local"
+    data_local_candidates = set()
+
+    try:
+        for part in psutil.disk_partitions(all=False):
+            mount = part.mountpoint.rstrip("/") or "/"
+            if mount.startswith(data_local_root):
+                data_local_candidates.add(mount)
+    except Exception as e:
+        logger.warning(f"Error enumerating disk partitions: {e}", exc_info=True)
+
+    if os.path.exists(data_local_root):
+        try:
+            for entry in os.listdir(data_local_root):
+                candidate_path = os.path.join(data_local_root, entry)
+                if os.path.isdir(candidate_path):
+                    data_local_candidates.add(os.path.realpath(candidate_path).rstrip("/"))
+        except Exception as e:
+            logger.warning(f"Error listing directories under {data_local_root}: {e}", exc_info=True)
+
+    for mount in sorted(data_local_candidates):
+        display_name = os.path.basename(mount) or mount
+        targets.append({"path": mount, "label": f"Data ({mount})" if mount.startswith(data_local_root) else display_name})
+
+    seen_paths = set()
+    for target in targets:
+        path = target["path"].rstrip("/") or "/"
+        label = target["label"]
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+
+        if not os.path.exists(path):
+            disk_entries.append({
+                "path": path,
+                "label": label,
+                "error": "Path not found"
+            })
+            continue
+
+        try:
+            usage = psutil.disk_usage(path)
+            total_gb = round(usage.total / (1024 ** 3), 2)
+            used_gb = round(usage.used / (1024 ** 3), 2)
+            free_gb = round(usage.free / (1024 ** 3), 2)
+            percent_used = round(usage.percent, 2)
+
+            disk_entries.append({
+                "path": path,
+                "label": label,
+                "total_gb": total_gb,
+                "used_gb": used_gb,
+                "free_gb": free_gb,
+                "percent_used": percent_used
+            })
+        except PermissionError:
+            disk_entries.append({
+                "path": path,
+                "label": label,
+                "error": "Permission denied"
+            })
+        except Exception as e:
+            logger.warning(f"Error retrieving disk usage for {path}: {e}", exc_info=True)
+            disk_entries.append({
+                "path": path,
+                "label": label,
+                "error": f"Could not retrieve disk usage: {str(e)}"
+            })
+
+    return disk_entries
+
 def get_system_metrics() -> Dict[str, Any]:
     """Gathers CPU and System Memory metrics."""
     try:
         cpu_percent = psutil.cpu_percent(interval=0.5)
         virtual_mem = psutil.virtual_memory()
+        load_avg_1 = load_avg_5 = load_avg_15 = None
+        try:
+            load_avg_1, load_avg_5, load_avg_15 = os.getloadavg()
+        except (AttributeError, OSError):
+            logger.warning("os.getloadavg() not supported on this platform.")
+        cpu_logical_count = psutil.cpu_count(logical=True) or os.cpu_count()
         return {
             "cpu_percent": cpu_percent,
             "memory_total_gb": round(virtual_mem.total / (1024**3), 2),
             "memory_used_gb": round(virtual_mem.used / (1024**3), 2),
             "memory_percent": virtual_mem.percent,
+            "load_average_1m": round(load_avg_1, 2) if load_avg_1 is not None else None,
+            "load_average_5m": round(load_avg_5, 2) if load_avg_5 is not None else None,
+            "load_average_15m": round(load_avg_15, 2) if load_avg_15 is not None else None,
+            "load_max": cpu_logical_count if cpu_logical_count is not None else None,
+            "disks": get_disk_metrics(),
         }
     except Exception as e:
         logger.error(f"Error getting system metrics: {e}", exc_info=True)
@@ -36,6 +129,11 @@ def get_system_metrics() -> Dict[str, Any]:
             "memory_total_gb": None,
             "memory_used_gb": None,
             "memory_percent": None,
+            "load_average_1m": None,
+            "load_average_5m": None,
+            "load_average_15m": None,
+            "load_max": None,
+            "disks": [],
             "error": f"Could not retrieve system metrics: {str(e)}"
         }
 

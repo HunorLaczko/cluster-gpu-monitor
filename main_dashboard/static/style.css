@@ -129,6 +129,83 @@ main {
     margin-bottom: 0.25rem;
     color: #555;
 }
+.metric-item.load-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.metric-item.disk-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    grid-column: 1 / -1;
+}
+.disk-usage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.disk-item {
+    background-color: #f9fafc;
+    border: 1px solid #e3e6ea;
+    border-radius: 4px;
+    padding: 0.6rem 0.7rem;
+}
+.disk-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+.disk-label {
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.disk-percent {
+    font-size: 0.9em;
+    color: #555;
+}
+.disk-usage-details {
+    font-size: 0.85em;
+    color: #555;
+    margin-top: 0.35rem;
+}
+.disk-error {
+    font-size: 0.85em;
+    color: #dc3545;
+    margin-top: 0.35rem;
+}
+.disk-item-error {
+    background-color: #fff5f5;
+    border-color: #dc3545;
+}
+.disk-item-warning {
+    border-color: #ffc107;
+}
+.disk-item-critical {
+    border-color: #dc3545;
+}
+.disk-item .progress-bar-container,
+.disk-item .overview-progress-bar-container {
+    margin-top: 0.4rem;
+}
+.load-average-values {
+    font-size: 0.95em;
+    font-family: "Roboto Mono", "Source Code Pro", monospace;
+    color: #333;
+}
+.load-average-values span {
+    display: inline-block;
+    min-width: 3.4ch;
+}
+.load-max-text {
+    font-size: 0.8rem;
+    color: #666;
+}
 
 /* System Vitals Progress Bar (Detailed View) */
 .progress-bar-container {
@@ -151,6 +228,9 @@ main {
 }
 .progress-bar.high-usage { background-color: #ffc107; }
 .progress-bar.critical-usage { background-color: #dc3545; }
+.progress-bar.overload {
+    background: repeating-linear-gradient(45deg, rgba(220,53,69,0.95) 0, rgba(220,53,69,0.95) 10px, rgba(255,193,7,0.95) 10px, rgba(255,193,7,0.95) 20px);
+}
 
 /* GPU Card for Detailed View */
 .gpu-card {
@@ -285,7 +365,7 @@ main {
 
 .overview-metrics-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 0.5rem;
     margin-bottom: 0.5rem;
 }
@@ -327,6 +407,37 @@ main {
 }
 .overview-progress-bar.high-usage { background-color: #ffc107; }
 .overview-progress-bar.critical-usage { background-color: #dc3545; }
+.overview-progress-bar.overload {
+    background: repeating-linear-gradient(45deg, rgba(220,53,69,0.95) 0, rgba(220,53,69,0.95) 10px, rgba(255,193,7,0.95) 10px, rgba(255,193,7,0.95) 20px);
+}
+.overview-metric-item.load-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    grid-column: 1 / -1;
+}
+.overview-metric-item.load-metric .load-average-values {
+    font-size: 0.9em;
+}
+.overview-metric-item.load-metric .load-max-text {
+    font-size: 0.75em;
+}
+.overview-metric-item.disk-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    grid-column: 1 / -1;
+}
+.overview-metric-item.disk-metric .disk-item {
+    font-size: 0.85em;
+    padding: 0.5rem 0.6rem;
+}
+.overview-metric-item.disk-metric .disk-label {
+    font-size: 0.9em;
+}
+.overview-metric-item.disk-metric .disk-usage-details {
+    font-size: 0.8em;
+}
 
 .overview-gpu-card {
     border: 1px solid #e9ecef;

@@ -49,12 +49,13 @@ def deploy_to_host(host_details):
 
         deploy_path = host_details["deploy_path"]
         remote_user = host_details["username"]
+        remote_group = host_details.get("group") or remote_user
         exporter_port = str(host_details.get("exporter_port", 8000)) # Get port from config, default 8000
 
         # 1. Create deployment directory (remains the same)
         logger.info(f"Creating deployment directory: {deploy_path}")
         c.sudo(f"mkdir -p {deploy_path}", warn=True)
-        c.sudo(f"chown {remote_user}:{remote_user} {deploy_path}", warn=True)
+        c.sudo(f"chown {remote_user}:{remote_group} {deploy_path}", warn=True)
 
         # 2. Upload exporter files
         logger.info("Uploading exporter files...")
@@ -88,8 +89,7 @@ def deploy_to_host(host_details):
         c.run(f"chmod +x {remote_start_script_path}")
         logger.info(f"Uploaded and configured {START_EXPORTER_SCRIPT_NAME} to {remote_start_script_path}")
 
-        # 3. Install dependencies (remains largely the same)
-        # ... (ensure python_executable and pip_executable paths are correct relative to deploy_path) ...
+        # 3. Install dependencies 
         logger.info("Setting up Python environment and installing dependencies...")
         python_executable = host_details.get("python_executable", DEFAULT_PYTHON_VERSION)
         
@@ -101,19 +101,17 @@ def deploy_to_host(host_details):
         requirements_file_remote = f"{deploy_path}/requirements.txt" # Ensure this uses deploy_path
         c.run(f"{pip_executable} install --upgrade pip", hide=True)
         c.run(f"{pip_executable} install -r {requirements_file_remote}", hide=True)
+        c.sudo(f"chown -R {remote_user}:{remote_group} {deploy_path}", warn=True)
 
 
         # 4. Setup systemd service (remains largely the same)
-        # The systemd service file already uses {{DEPLOY_PATH}} which is correct
-        # The ExecStart in systemd service calls `{{DEPLOY_PATH}}/start_exporter.sh`
-        # which will now use the correct templated DEPLOY_PATH and EXPORTER_PORT internally.
         logger.info("Setting up systemd service...")
         service_template_path = os.path.join(EXPORTER_NODE_DIR, "systemd_service_template.service")
-        # ... (rest of systemd setup logic, ensure {{REMOTE_USER}} and {{DEPLOY_PATH}} are correctly replaced)
         with open(service_template_path, "r") as f:
             service_content = f.read()
         
         service_content = service_content.replace("{{REMOTE_USER}}", remote_user)
+        service_content = service_content.replace("{{REMOTE_GROUP}}", remote_group)
         service_content = service_content.replace("{{DEPLOY_PATH}}", deploy_path) # This is correct
         
         remote_service_file_path = "/etc/systemd/system/metrics_exporter.service"

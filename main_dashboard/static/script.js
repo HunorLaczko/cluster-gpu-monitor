@@ -196,6 +196,22 @@ function createDetailedHostCardStructure(hostConfig) {
                     <span class="memory-percent">N/A</span>% (<span class="memory-used">N/A</span> / <span class="memory-total">N/A</span> GB)
                     <div class="progress-bar-container"><div class="progress-bar memory-progress"></div></div>
                 </div>
+                <div class="metric-item load-metric">
+                    <strong>CPU Load (1m / 5m / 15m)</strong>
+                    <div class="load-average-values">
+                        <span class="load-val-1">N/A</span> /
+                        <span class="load-val-5">N/A</span> /
+                        <span class="load-val-15">N/A</span>
+                    </div>
+                    <div class="load-max-text">Max: <span class="load-max-value">N/A</span></div>
+                    <div class="progress-bar-container"><div class="progress-bar load-progress"></div></div>
+                </div>
+                <div class="metric-item disk-metric">
+                    <strong>Disk Usage</strong>
+                    <div class="disk-usage-list detailed-disk-list">
+                        <p class="no-disk-data">No disk data.</p>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="stats-section">
@@ -231,6 +247,22 @@ function createOverviewHostCardStructure(hostConfig) {
                 <strong>RAM</strong>
                 <span class="metric-value memory-percent">N/A</span>%
                 <div class="overview-progress-bar-container"><div class="overview-progress-bar memory-progress"></div></div>
+            </div>
+            <div class="overview-metric-item load-metric">
+                <strong>Load 1/5/15m</strong>
+                <div class="load-average-values overview-load-values">
+                    <span class="load-val-1">N/A</span> /
+                    <span class="load-val-5">N/A</span> /
+                    <span class="load-val-15">N/A</span>
+                </div>
+                <div class="load-max-text overview-load-max">Max: <span class="load-max-value">N/A</span></div>
+                <div class="overview-progress-bar-container"><div class="overview-progress-bar load-progress"></div></div>
+            </div>
+            <div class="overview-metric-item disk-metric">
+                <strong>Disk Usage</strong>
+                <div class="disk-usage-list overview-disk-list">
+                    <p class="no-disk-data">No disk data.</p>
+                </div>
             </div>
         </div>
         <div class="gpus-overview-container">
@@ -343,6 +375,8 @@ function updateDetailedHostCard(hostData) {
         setNodeText(card, '.memory-used', 'N/A');
         setNodeText(card, '.memory-total', 'N/A');
         updateProgressBar(card, '.memory-progress', 0, 'detailed');
+        applyLoadMetrics(card, {}, 'detailed', 'N/A');
+        applyDiskMetrics(card, [], 'detailed', 'N/A');
         card.querySelector('.gpus-container').innerHTML = '<p class="no-gpu-message" style="display: block;">Error fetching host data.</p>';
         return;
     }
@@ -363,6 +397,16 @@ function updateDetailedHostCard(hostData) {
         setNodeText(card, '.memory-used', (typeof system.memory_used_gb === 'number' ? system.memory_used_gb.toFixed(2) : 'N/A'));
         setNodeText(card, '.memory-total', (typeof system.memory_total_gb === 'number' ? system.memory_total_gb.toFixed(2) : 'N/A'));
         updateProgressBar(card, '.memory-progress', system.memory_percent || 0, 'detailed');
+    }
+
+    const detailedLoadRatio = applyLoadMetrics(card, system, 'detailed', system.error ? 'Error' : 'N/A');
+    if (statusDot && detailedLoadRatio !== null && detailedLoadRatio > 100 && statusDot.classList.contains('ok')) {
+        statusDot.className = 'status-dot warning';
+    }
+
+    const diskSummary = applyDiskMetrics(card, Array.isArray(system.disks) ? system.disks : [], 'detailed', system.error ? 'Error' : 'N/A');
+    if (statusDot && diskSummary.maxPercent !== null && diskSummary.maxPercent > 95 && statusDot.classList.contains('ok')) {
+        statusDot.className = 'status-dot warning';
     }
 
     const gpusContainer = card.querySelector('.gpus-container');
@@ -483,6 +527,8 @@ function updateOverviewHostCard(hostData) {
         updateProgressBar(card, '.cpu-progress', 0, 'overview', false);
         setNodeText(card, '.memory-percent', 'ERR');
         updateProgressBar(card, '.memory-progress', 0, 'overview', false);
+        applyLoadMetrics(card, {}, 'overview', 'ERR');
+        applyDiskMetrics(card, [], 'overview', 'ERR');
         card.querySelector('.gpus-overview-container').innerHTML = '<p class="no-gpu-message" style="display: block;">Error fetching host data.</p>';
         return;
     }
@@ -500,6 +546,16 @@ function updateOverviewHostCard(hostData) {
         updateProgressBar(card, '.cpu-progress', system.cpu_percent || 0, 'overview', false);
         setNodeText(card, '.memory-percent', (typeof system.memory_percent === 'number' ? system.memory_percent.toFixed(0) : 'N/A'));
         updateProgressBar(card, '.memory-progress', system.memory_percent || 0, 'overview', false);
+    }
+
+    const overviewLoadRatio = applyLoadMetrics(card, system, 'overview', system.error ? 'Error' : 'N/A');
+    if (statusDot && overviewLoadRatio !== null && overviewLoadRatio > 100 && statusDot.classList.contains('ok')) {
+        statusDot.className = 'status-dot warning';
+    }
+
+    const diskSummary = applyDiskMetrics(card, Array.isArray(system.disks) ? system.disks : [], 'overview', system.error ? 'Error' : 'N/A');
+    if (statusDot && diskSummary.maxPercent !== null && diskSummary.maxPercent > 95 && statusDot.classList.contains('ok')) {
+        statusDot.className = 'status-dot warning';
     }
 
     const gpusContainer = card.querySelector('.gpus-overview-container');
@@ -594,24 +650,213 @@ function setNodeText(parent, selector, text) {
 
 function updateProgressBar(parent, selector, percentage, viewType = 'detailed', showText = true) {
     const bar = parent.querySelector(selector);
-    if (bar) {
-        const p = Math.max(0, Math.min(100, typeof percentage === 'number' ? percentage : 0));
-        bar.style.width = `${p}%`;
-        if (showText) {
-            bar.textContent = `${p.toFixed(viewType === 'overview' ? 0 : 1)}%`;
-        } else {
-            bar.textContent = '';
-        }
-        
-        const progressBarClassPrefix = viewType === 'overview' ? 'overview-progress-bar' : 'progress-bar';
-        bar.className = progressBarClassPrefix; 
+    if (!bar) {
+        return;
+    }
 
-        if (p > 85) {
-            bar.classList.add('critical-usage');
-        } else if (p > 65) {
-            bar.classList.add('high-usage');
+    const baseClass = viewType === 'overview' ? 'overview-progress-bar' : 'progress-bar';
+    bar.classList.add(baseClass);
+    bar.classList.remove(baseClass === 'overview-progress-bar' ? 'progress-bar' : 'overview-progress-bar');
+    bar.classList.remove('high-usage', 'critical-usage', 'overload');
+
+    const hasValue = typeof percentage === 'number' && Number.isFinite(percentage);
+    const actualPercent = hasValue ? percentage : 0;
+    const clampedPercent = Math.max(0, Math.min(actualPercent, 100));
+    bar.style.width = `${hasValue ? clampedPercent : 0}%`;
+
+    if (showText) {
+        if (hasValue) {
+            const decimals = viewType === 'overview' ? 0 : 1;
+            bar.textContent = `${actualPercent.toFixed(decimals)}%`;
+        } else {
+            bar.textContent = 'N/A';
+        }
+    } else {
+        bar.textContent = '';
+    }
+
+    if (!hasValue) {
+        return;
+    }
+
+    if (actualPercent > 100) {
+        bar.classList.add('overload');
+    } else if (clampedPercent > 85) {
+        bar.classList.add('critical-usage');
+    } else if (clampedPercent > 65) {
+        bar.classList.add('high-usage');
+    }
+}
+
+function isFiniteNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value);
+}
+
+function applyLoadMetrics(parent, system, viewType = 'detailed', fallbackLabel = 'N/A') {
+    const load1 = isFiniteNumber(system.load_average_1m) ? system.load_average_1m : null;
+    const load5 = isFiniteNumber(system.load_average_5m) ? system.load_average_5m : null;
+    const load15 = isFiniteNumber(system.load_average_15m) ? system.load_average_15m : null;
+    const loadMax = isFiniteNumber(system.load_max) && system.load_max > 0 ? system.load_max : null;
+
+    setNodeText(parent, '.load-val-1', load1 !== null ? load1.toFixed(2) : fallbackLabel);
+    setNodeText(parent, '.load-val-5', load5 !== null ? load5.toFixed(2) : fallbackLabel);
+    setNodeText(parent, '.load-val-15', load15 !== null ? load15.toFixed(2) : fallbackLabel);
+    setNodeText(parent, '.load-max-value', loadMax !== null ? loadMax.toString() : fallbackLabel);
+
+    const loadContainer = parent.querySelector('.load-average-values');
+    if (loadContainer) {
+        const summary = [
+            `1m: ${load1 !== null ? load1.toFixed(2) : fallbackLabel}`,
+            `5m: ${load5 !== null ? load5.toFixed(2) : fallbackLabel}`,
+            `15m: ${load15 !== null ? load15.toFixed(2) : fallbackLabel}`,
+            `Max: ${loadMax !== null ? loadMax : fallbackLabel}`
+        ].join(' | ');
+        loadContainer.setAttribute('title', summary);
+    }
+
+    const showText = viewType !== 'overview';
+    const loadRatio = (load1 !== null && loadMax !== null) ? (load1 / loadMax) * 100 : null;
+    updateProgressBar(parent, '.load-progress', loadRatio, viewType, showText);
+
+    if (loadRatio === null) {
+        const bar = parent.querySelector('.load-progress');
+        if (bar) {
+            bar.textContent = showText ? fallbackLabel : '';
         }
     }
+
+    return loadRatio;
+}
+
+function formatGigabytes(value) {
+    if (!isFiniteNumber(value)) {
+        return 'N/A';
+    }
+    return `${value.toFixed(2)} GB`;
+}
+
+function applyDiskMetrics(parent, disks, viewType = 'detailed', fallbackLabel = 'N/A') {
+    const listSelector = viewType === 'overview' ? '.overview-disk-list' : '.detailed-disk-list';
+    const container = parent.querySelector(listSelector);
+
+    if (!container) {
+        return { maxPercent: null };
+    }
+
+    container.innerHTML = '';
+
+    const addEmptyState = (text) => {
+        const emptyEl = document.createElement('p');
+        emptyEl.className = 'no-disk-data';
+        emptyEl.textContent = text;
+        container.appendChild(emptyEl);
+    };
+
+    if (!Array.isArray(disks) || disks.length === 0) {
+        addEmptyState('No disk data.');
+        return { maxPercent: null };
+    }
+
+    let maxPercent = null;
+
+    disks.forEach(disk => {
+        const item = document.createElement('div');
+        item.className = `disk-item ${viewType}-disk-item`;
+
+        const labelText = disk.label || disk.path || 'Unknown';
+
+        if (disk.error) {
+            item.classList.add('disk-item-error');
+
+            const header = document.createElement('div');
+            header.className = 'disk-item-header';
+
+            const labelEl = document.createElement('span');
+            labelEl.className = 'disk-label';
+            labelEl.textContent = labelText;
+            header.appendChild(labelEl);
+
+            item.appendChild(header);
+
+            const errorEl = document.createElement('div');
+            errorEl.className = 'disk-error';
+            errorEl.textContent = disk.error;
+            item.appendChild(errorEl);
+
+            container.appendChild(item);
+            return;
+        }
+
+        const percentValue = isFiniteNumber(disk.percent_used) ? disk.percent_used : null;
+        const percentDecimals = viewType === 'overview' ? 0 : 1;
+        const percentText = percentValue !== null ? `${percentValue.toFixed(percentDecimals)}%` : fallbackLabel;
+
+        const header = document.createElement('div');
+        header.className = 'disk-item-header';
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'disk-label';
+        labelEl.textContent = labelText;
+        labelEl.title = disk.path || labelText;
+        header.appendChild(labelEl);
+
+        const percentEl = document.createElement('span');
+        percentEl.className = 'disk-percent';
+        percentEl.textContent = percentText;
+        header.appendChild(percentEl);
+
+        item.appendChild(header);
+
+        const progressContainer = document.createElement('div');
+        progressContainer.className = viewType === 'overview' ? 'overview-progress-bar-container' : 'progress-bar-container';
+
+        const progressBar = document.createElement('div');
+        progressBar.className = `${viewType === 'overview' ? 'overview-progress-bar' : 'progress-bar'} disk-progress`;
+        progressContainer.appendChild(progressBar);
+        item.appendChild(progressContainer);
+
+        const usageDetails = document.createElement('div');
+        usageDetails.className = 'disk-usage-details';
+        const usedText = formatGigabytes(disk.used_gb);
+        const totalText = formatGigabytes(disk.total_gb);
+        usageDetails.textContent = `${usedText} / ${totalText}`;
+        if (isFiniteNumber(disk.free_gb)) {
+            usageDetails.textContent += ` (Free: ${formatGigabytes(disk.free_gb)})`;
+        }
+        item.appendChild(usageDetails);
+
+        if (disk.path) {
+            item.setAttribute('data-disk-path', disk.path);
+        }
+        if (percentValue !== null) {
+            item.setAttribute('data-disk-percent', percentValue.toFixed(2));
+        }
+
+        container.appendChild(item);
+
+        updateProgressBar(item, '.disk-progress', percentValue, viewType, viewType !== 'overview');
+
+        if (percentValue !== null) {
+            if (maxPercent === null) {
+                maxPercent = percentValue;
+            } else {
+                maxPercent = Math.max(maxPercent, percentValue);
+            }
+
+            if (percentValue > 95) {
+                item.classList.add('disk-item-critical');
+            } else if (percentValue > 80) {
+                item.classList.add('disk-item-warning');
+            }
+        }
+    });
+
+    if (!container.children.length) {
+        addEmptyState('No disk data.');
+        return { maxPercent: null };
+    }
+
+    return { maxPercent };
 }
 
 const faviconLink = document.createElement('link');

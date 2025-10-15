@@ -3,6 +3,7 @@
         "name": "server_1",
         "address": "192.168.1.2",
         "username": "<username>",
+        "group": "<groupname>",
         "deploy_path": "/opt/system_monitor_exporter",
         "exporter_port": 8000,
         "ssh_port": 22,
