@@ -1,1 +1,4 @@
 *__pycache__*
+.venv/
+deployment_scripts/hosts_config_full.json
+main_dashboard/monitored_hosts_config_full.json

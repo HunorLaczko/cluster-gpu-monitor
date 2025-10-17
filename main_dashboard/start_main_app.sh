@@ -22,7 +22,9 @@ fi
 # Define host, port, and workers for Gunicorn
 HOST="0.0.0.0"
 PORT="5000" # Ensure this port is open
-WORKERS="2" # Adjust based on your server's CPU cores (e.g., (2 * CPU_CORES) + 1)
+WORKERS="1" # Use a single worker to keep the in-memory cache consistent across connections
+WORKER_CLASS="gthread" # Threaded workers handle concurrent requests without websocket dependencies
+THREADS="4"
 LOG_FILE="$APP_DIR/dashboard.log"
 
 echo "Starting Main Dashboard Application on $HOST:$PORT with $WORKERS workers at $(date)" # >> "$LOG_FILE" 2>&1
@@ -31,7 +33,7 @@ echo "Starting Main Dashboard Application on $HOST:$PORT with $WORKERS workers a
 # For Flask, you typically point to the "wsgi:app" or "filename:flask_instance_name"
 # --log-level info can be helpful
 # --access-logfile - and --error-logfile - to log to stdout/stderr for journald
-exec "$GUNICORN_EXEC" --workers "$WORKERS" --bind "$HOST:$PORT" "$APP_MODULE" \
+exec "$GUNICORN_EXEC" --workers "$WORKERS" --worker-class "$WORKER_CLASS" --threads "$THREADS" --bind "$HOST:$PORT" "$APP_MODULE" \
     --access-logfile "$APP_DIR/gunicorn_access.log" \
     --error-logfile "$APP_DIR/gunicorn_error.log" \
     --log-level info

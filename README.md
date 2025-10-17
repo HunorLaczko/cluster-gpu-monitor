@@ -10,6 +10,7 @@ A web-based dashboard to monitor CPU, RAM, and NVIDIA GPU stats (utilization, me
     * **Overview:** Condensed view for monitoring many hosts at a glance.
     * **Detailed View:** In-depth metrics for individual hosts, including per-process GPU usage.
 * Data is collected by lightweight Python exporters on each monitored machine.
+* The dashboard keeps an in-memory cache of exporter responses and serves cached data over lightweight HTTP polling to minimize load.
 * Deployment scripts provided to set up exporters on remote Linux systems (via SSH) and the main dashboard locally.
 * Configurable refresh interval for the dashboard.
 
@@ -19,7 +20,7 @@ A web-based dashboard to monitor CPU, RAM, and NVIDIA GPU stats (utilization, me
 2.  **Deployment Scripts (`deployment_scripts/`):**
     * `deploy_exporter.py`: Deploys exporters to remote Linux hosts using SSH and sets them up as `systemd` services.
     * `deploy_dashboard.py`: Sets up the main dashboard application and its `systemd` service on the current (local) machine.
-3.  **Main Dashboard (`main_dashboard/`):** A Flask web application that queries exporter APIs, aggregates data, and presents it through a web UI with auto-refresh.
+3.  **Main Dashboard (`main_dashboard/`):** A Flask web application that polls exporters in the background, keeps a shared in-memory cache, and presents data through a web UI powered by periodic polling against the cached metrics.
 
 ## Prerequisites
 
@@ -68,6 +69,32 @@ A web-based dashboard to monitor CPU, RAM, and NVIDIA GPU stats (utilization, me
     * Configure refresh interval directly in the UI.
     * "Last Updated" timestamp shows data freshness.
     * "Reload Host Config" button reloads `monitored_hosts_config.json` without a full service restart.
+
+### Testing
+
+The repository ships with an automated pytest suite that exercises both the FastAPI exporter and the Flask dashboard (including the in-memory cache and polling workflow). To run it locally:
+
+```bash
+pip install -r exporter_node/requirements.txt
+pip install -r main_dashboard/requirements.txt
+pip install -r requirements-dev.txt
+pytest
+```
+
+All tests are hermetic – they stub out GPU/system calls and network traffic – so they can run on any developer machine without NVIDIA hardware.
+
+### Cache & Polling Strategy
+
+The dashboard maintains an in-memory cache of exporter responses. A background worker refreshes the cache at a configurable cadence and every browser simply polls the Flask API for the most recent snapshot. Because each HTTP request is served from the shared cache, multiple viewers do not generate additional load on exporter nodes.
+
+Environment variables (set before starting the dashboard service) allow tuning this behaviour:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `CACHE_REFRESH_SECONDS` | `10` | How often (in seconds) the dashboard polls exporters and refreshes the cache. |
+| `CACHE_STALE_AFTER_SECONDS` | `30` | Threshold (in seconds) after which the cache is considered stale and a synchronous refresh is triggered on demand. |
+
+Auto-refresh in the UI controls how frequently the browser polls the `/api/data` endpoint; disabling it pauses polling entirely until manually re-enabled.
 
 ## Troubleshooting
 

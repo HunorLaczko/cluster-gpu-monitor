@@ -31,11 +31,23 @@
         <p>Monitoring Dashboard</p>
     </footer>
 
+    <script id="initial-hosts-config" type="application/json">
+        {{ initial_hosts_config | tojson | safe }}
+    </script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
-        const initialHostsConfig = {{ initial_hosts_config | tojson }};
+        const initialConfigEl = document.getElementById('initial-hosts-config');
+        let initialHostsConfig = [];
+        if (initialConfigEl && initialConfigEl.textContent.trim()) {
+            try {
+                initialHostsConfig = JSON.parse(initialConfigEl.textContent);
+            } catch (err) {
+                console.error('Failed to parse initial host configuration JSON.', err);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
-            initializeDashboard(initialHostsConfig, 'detailed'); // Pass view type
+            initializeDashboard(initialHostsConfig, 'detailed');
         });
     </script>
 </body>

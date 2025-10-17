@@ -12,6 +12,9 @@ User={{DASHBOARD_USER}}
 
 WorkingDirectory={{DASHBOARD_DEPLOY_PATH}}
 ExecStart={{DASHBOARD_DEPLOY_PATH}}/start_main_app.sh
+# Optional runtime tuning (uncomment to override defaults)
+# Environment=CACHE_REFRESH_SECONDS=10
+# Environment=CACHE_STALE_AFTER_SECONDS=30
 
 Restart=always
 RestartSec=10s

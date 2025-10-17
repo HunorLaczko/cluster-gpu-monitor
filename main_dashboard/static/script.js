@@ -2,6 +2,9 @@ let refreshIntervalId = null;
 let autoRefreshEnabled = true;
 let currentRefreshIntervalMs = 15000; // Default to 15 seconds in milliseconds, will be updated from input/localStorage
 let currentDashboardView = 'overview'; // Default or set by initializeDashboard
+let ongoingFetchPromise = null;
+let lastFetchCompletedAtMs = 0;
+const MIN_FETCH_GAP_MS = 1000; // Avoid hammering the API when manual triggers cluster together
 
 // Function to get the current interval from the input field
 function getRefreshIntervalMs() {
@@ -22,6 +25,12 @@ function getRefreshIntervalMs() {
     return 15000; // Default if input not found
 }
 
+function updateRefreshStatusLabel() {
+    const refreshStatusEl = document.getElementById('refreshStatus');
+    if (!refreshStatusEl) return;
+    refreshStatusEl.textContent = autoRefreshEnabled ? 'ON' : 'OFF';
+}
+
 // Function to (re)start the interval timer
 function startRefreshInterval() {
     if (refreshIntervalId) {
@@ -31,8 +40,9 @@ function startRefreshInterval() {
     if (autoRefreshEnabled) {
         currentRefreshIntervalMs = getRefreshIntervalMs(); // Get the latest value from input
         console.log(`Starting refresh interval at ${currentRefreshIntervalMs / 1000} seconds.`);
-        refreshIntervalId = setInterval(fetchAndUpdateAllData, currentRefreshIntervalMs);
+        refreshIntervalId = setInterval(() => fetchAndUpdateAllData(false), currentRefreshIntervalMs);
     }
+    updateRefreshStatusLabel();
 }
 
 function initializeDashboard(hostsConfig, viewType = 'overview') {
@@ -83,6 +93,7 @@ function initializeDashboard(hostsConfig, viewType = 'overview') {
     fetchAndUpdateAllData(); 
     startRefreshInterval(); // Use the new function to start/restart with current interval value
     setupEventListeners();
+    updateRefreshStatusLabel();
 }
 
 function setupEventListeners() {
@@ -111,7 +122,7 @@ function handleIntervalChange() {
     console.log(`Refresh interval input changed. New value: ${newIntervalMs / 1000} seconds.`);
     localStorage.setItem('dashboardRefreshIntervalSeconds', newIntervalMs / 1000);
     startRefreshInterval(); 
-    if (autoRefreshEnabled) { 
+    if (autoRefreshEnabled) {
         fetchAndUpdateAllData();
     }
 }
@@ -119,20 +130,18 @@ function handleIntervalChange() {
 function handleToggleRefresh(event) {
     event.preventDefault();
     autoRefreshEnabled = !autoRefreshEnabled;
-    const refreshStatusEl = document.getElementById('refreshStatus');
     if (autoRefreshEnabled) {
-        startRefreshInterval(); 
-        if (refreshStatusEl) refreshStatusEl.textContent = 'ON';
         console.log("Auto-refresh enabled.");
-        fetchAndUpdateAllData(); 
+        startRefreshInterval();
+        fetchAndUpdateAllData();
     } else {
+        console.log("Auto-refresh disabled.");
         if (refreshIntervalId) {
             clearInterval(refreshIntervalId);
             refreshIntervalId = null;
         }
-        if (refreshStatusEl) refreshStatusEl.textContent = 'OFF';
-        console.log("Auto-refresh disabled.");
     }
+    updateRefreshStatusLabel();
 }
 
 async function handleReloadConfig() {
@@ -142,19 +151,22 @@ async function handleReloadConfig() {
         const result = await response.json();
         alert(result.message || "Configuration reload processed.");
         
-        const dataResponse = await fetch('/api/data');
-        const newHostData = await dataResponse.json();
+        const dataResponse = await fetch('/api/data?fresh=1');
+        const payload = await dataResponse.json();
+        const payloadMetadata = !Array.isArray(payload) ? (payload.metadata || {}) : {};
+        const payloadError = !Array.isArray(payload) ? (payload.error || payloadMetadata.error) : null;
+        const newHostData = Array.isArray(payload) ? payload : payload.data;
 
-        if (!Array.isArray(newHostData) && newHostData.error) {
-            console.error("Reload config: /api/data returned an error.", newHostData.error);
+        if (payloadError) {
+            console.error("Reload config: /api/data reported an error.", payloadError);
             const dashboardContainer = document.getElementById('dashboardContainer');
             if (dashboardContainer) {
-                 dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Failed to load new host data after config reload: ${newHostData.error}</p>`;
+                 dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Failed to load new host data after config reload: ${payloadError}</p>`;
             }
             return;
         }
-         if (!Array.isArray(newHostData)) {
-            console.error("Reload config: /api/data did not return an array.", newHostData);
+        if (!Array.isArray(newHostData)) {
+            console.error("Reload config: /api/data did not return an array.", payload);
             return;
         }
 
@@ -164,6 +176,7 @@ async function handleReloadConfig() {
         if(loadingMsg) loadingMsg.remove();
 
         initializeDashboard(newHostsConfig, currentDashboardView); 
+        fetchAndUpdateAllData(true);
 
     } catch (error) {
         console.error('Error reloading host configuration:', error);
@@ -274,11 +287,18 @@ function createOverviewHostCardStructure(hostConfig) {
     return card;
 }
 
-function updateLastUpdatedTimestamp(success = true) {
+function updateLastUpdatedTimestamp(success = true, refreshUtc = null) {
     const lastUpdatedEl = document.getElementById('lastUpdated');
     if (lastUpdatedEl) {
         if (success) {
-            lastUpdatedEl.textContent = new Date().toLocaleTimeString();
+            let timestamp;
+            if (refreshUtc) {
+                const parsed = new Date(refreshUtc);
+                timestamp = isNaN(parsed.getTime()) ? new Date() : parsed;
+            } else {
+                timestamp = new Date();
+            }
+            lastUpdatedEl.textContent = timestamp.toLocaleTimeString();
         } else {
             lastUpdatedEl.textContent = "Update Error";
         }
@@ -287,66 +307,110 @@ function updateLastUpdatedTimestamp(success = true) {
     }
 }
 
-async function fetchAndUpdateAllData() {
-    console.log("Fetching data from /api/data... at " + new Date().toLocaleTimeString() + ` (Interval: ${currentRefreshIntervalMs/1000}s)`);
-    try {
-        const response = await fetch('/api/data');
-        if (!response.ok) {
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
-        }
-        const hostsData = await response.json();
-        
-        const loadingMsg = document.getElementById('loadingMessage');
-        if(loadingMsg) loadingMsg.remove();
-
-        if (!Array.isArray(hostsData)) {
-            console.error("Received non-array data from /api/data:", hostsData);
-            if(hostsData && hostsData.error) {
-                const dashboardContainer = document.getElementById('dashboardContainer');
-                if (dashboardContainer) {
-                    dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Error from API: ${hostsData.error}</p>`;
-                }
-            }
-            updateLastUpdatedTimestamp(false);
-            return;
-        }
-        
-        hostsData.forEach(hostData => {
-            try { 
-                if (currentDashboardView === 'overview') {
-                    updateOverviewHostCard(hostData);
-                } else { 
-                    updateDetailedHostCard(hostData);
-                }
-            } catch (cardError) {
-                console.error(`Error updating card for host ${hostData.name}:`, cardError);
-                const cardId = `host-card-${currentDashboardView}-${hostData.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
-                const cardElement = document.getElementById(cardId);
-                if (cardElement) {
-                    const errorEl = cardElement.querySelector('.error-message');
-                    if (errorEl) {
-                        errorEl.textContent = "Error displaying data for this host.";
-                        errorEl.style.display = 'block';
-                    }
-                    const statusDot = cardElement.querySelector('.status-dot');
-                    if(statusDot) statusDot.className = 'status-dot error';
-                }
-            }
-        });
-        updateLastUpdatedTimestamp(true);
-
-    } catch (error) {
-        console.error('Failed to fetch or update data globally:', error);
-        updateLastUpdatedTimestamp(false);
-        const loadingMsg = document.getElementById('loadingMessage');
+function processHostPayload(hostsData, metadata = {}) {
+    const loadingMsg = document.getElementById('loadingMessage');
+    if (Array.isArray(hostsData)) {
+        if (loadingMsg) loadingMsg.remove();
+    } else {
+        const errorMessage = metadata && metadata.error ? metadata.error : 'Unexpected response from API.';
+        console.error('Received non-array data while processing host payload:', hostsData);
         if (loadingMsg && document.getElementById('dashboardContainer').contains(loadingMsg)) {
-            loadingMsg.textContent = `Error fetching data: ${error.message}. Check console.`;
+            loadingMsg.textContent = `Error: ${errorMessage}`;
             loadingMsg.style.color = 'red';
-        } else if (!document.querySelector('.host-card') && !document.querySelector('.overview-host-card')) {
-             const dashboardContainer = document.getElementById('dashboardContainer');
-             if(dashboardContainer) dashboardContainer.innerHTML = `<p style="color:red; text-align:center;">Error fetching data: ${error.message}.</p>`;
+        } else {
+            const dashboardContainer = document.getElementById('dashboardContainer');
+            if (dashboardContainer) {
+                dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Error from API: ${errorMessage}</p>`;
+            }
         }
+        updateLastUpdatedTimestamp(false, metadata ? metadata.last_refresh_utc : null);
+        return;
     }
+
+    hostsData.forEach(hostData => {
+        try {
+            if (currentDashboardView === 'overview') {
+                updateOverviewHostCard(hostData);
+            } else {
+                updateDetailedHostCard(hostData);
+            }
+        } catch (cardError) {
+            console.error(`Error updating card for host ${hostData.name}:`, cardError);
+            const cardId = `host-card-${currentDashboardView}-${hostData.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            const cardElement = document.getElementById(cardId);
+            if (cardElement) {
+                const errorEl = cardElement.querySelector('.error-message');
+                if (errorEl) {
+                    errorEl.textContent = "Error displaying data for this host.";
+                    errorEl.style.display = 'block';
+                }
+                const statusDot = cardElement.querySelector('.status-dot');
+                if (statusDot) statusDot.className = 'status-dot error';
+            }
+        }
+    });
+
+    const hasMetadataError = Boolean(metadata && metadata.error);
+    updateLastUpdatedTimestamp(!hasMetadataError, metadata ? metadata.last_refresh_utc : null);
+    if (hasMetadataError) {
+        console.warn('Cache metadata reported an error:', metadata.error);
+    }
+}
+
+async function fetchAndUpdateAllData(force = false) {
+    const now = Date.now();
+
+    if (!force && ongoingFetchPromise) {
+        console.debug('Reusing in-flight fetch to avoid duplicate polling.');
+        return ongoingFetchPromise;
+    }
+
+    if (!force && now - lastFetchCompletedAtMs < MIN_FETCH_GAP_MS) {
+        console.debug('Skipping fetch; last update completed recently.');
+        return;
+    }
+
+    const endpoint = force ? '/api/data?fresh=1' : '/api/data';
+    console.log(`Fetching data from ${endpoint} at ${new Date().toLocaleTimeString()} (Interval: ${currentRefreshIntervalMs / 1000}s, force=${force})`);
+
+    const fetchPromise = (async () => {
+        try {
+            const response = await fetch(endpoint, { cache: 'no-store' });
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            }
+
+            const payload = await response.json();
+            const metadata = Array.isArray(payload) ? {} : (payload.metadata || {});
+            const hostsData = Array.isArray(payload) ? payload : payload.data;
+
+            if (!Array.isArray(hostsData)) {
+                metadata.error = metadata.error || 'Malformed API response. Expected an array of hosts.';
+                processHostPayload(null, metadata);
+                return;
+            }
+
+            processHostPayload(hostsData, metadata);
+        } catch (error) {
+            console.error('Failed to fetch or update data globally:', error);
+            updateLastUpdatedTimestamp(false);
+            const loadingMsg = document.getElementById('loadingMessage');
+            const dashboardContainer = document.getElementById('dashboardContainer');
+
+            if (loadingMsg && dashboardContainer && dashboardContainer.contains(loadingMsg)) {
+                loadingMsg.textContent = `Error fetching data: ${error.message}. Check console.`;
+                loadingMsg.style.color = 'red';
+            } else if (dashboardContainer && !document.querySelector('.host-card') && !document.querySelector('.overview-host-card')) {
+                dashboardContainer.innerHTML = `<p style="color:red; text-align:center;">Error fetching data: ${error.message}.</p>`;
+            }
+        } finally {
+            lastFetchCompletedAtMs = Date.now();
+            ongoingFetchPromise = null;
+        }
+    })();
+
+    ongoingFetchPromise = fetchPromise;
+    return fetchPromise;
 }
 
 function updateDetailedHostCard(hostData) {
