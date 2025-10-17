@@ -370,8 +370,19 @@ async function fetchAndUpdateAllData(force = false) {
         return;
     }
 
-    const endpoint = force ? '/api/data?fresh=1' : '/api/data';
-    console.log(`Fetching data from ${endpoint} at ${new Date().toLocaleTimeString()} (Interval: ${currentRefreshIntervalMs / 1000}s, force=${force})`);
+    const intervalMs = Number.isFinite(currentRefreshIntervalMs) && currentRefreshIntervalMs > 0
+        ? currentRefreshIntervalMs
+        : getRefreshIntervalMs();
+    const intervalSeconds = Math.max(1, intervalMs / 1000);
+
+    const params = new URLSearchParams();
+    if (force) {
+        params.set('fresh', '1');
+    }
+    params.set('client_interval_seconds', intervalSeconds.toFixed(3));
+
+    const endpoint = `/api/data?${params.toString()}`;
+    console.log(`Fetching data from ${endpoint} at ${new Date().toLocaleTimeString()} (Interval: ${intervalSeconds}s, force=${force})`);
 
     const fetchPromise = (async () => {
         try {

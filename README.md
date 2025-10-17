@@ -10,7 +10,7 @@ A web-based dashboard to monitor CPU, RAM, and NVIDIA GPU stats (utilization, me
     * **Overview:** Condensed view for monitoring many hosts at a glance.
     * **Detailed View:** In-depth metrics for individual hosts, including per-process GPU usage.
 * Data is collected by lightweight Python exporters on each monitored machine.
-* The dashboard keeps an in-memory cache of exporter responses and serves cached data over lightweight HTTP polling to minimize load.
+* The dashboard keeps an in-memory cache of exporter responses and serves cached data over lightweight HTTP polling that automatically adapts to the fastest active client to minimize load.
 * Deployment scripts provided to set up exporters on remote Linux systems (via SSH) and the main dashboard locally.
 * Configurable refresh interval for the dashboard.
 
@@ -20,7 +20,7 @@ A web-based dashboard to monitor CPU, RAM, and NVIDIA GPU stats (utilization, me
 2.  **Deployment Scripts (`deployment_scripts/`):**
     * `deploy_exporter.py`: Deploys exporters to remote Linux hosts using SSH and sets them up as `systemd` services.
     * `deploy_dashboard.py`: Sets up the main dashboard application and its `systemd` service on the current (local) machine.
-3.  **Main Dashboard (`main_dashboard/`):** A Flask web application that polls exporters in the background, keeps a shared in-memory cache, and presents data through a web UI powered by periodic polling against the cached metrics.
+3.  **Main Dashboard (`main_dashboard/`):** A Flask web application that polls exporters in the background, keeps a shared in-memory cache, and presents data through a web UI powered by periodic polling against the cached metrics. The cache refresh cadence follows the fastest active browser while slowing down automatically when all viewers choose longer intervals.
 
 ## Prerequisites
 
@@ -85,7 +85,7 @@ All tests are hermetic â€“ they stub out GPU/system calls and network traffic â€
 
 ### Cache & Polling Strategy
 
-The dashboard maintains an in-memory cache of exporter responses. A background worker refreshes the cache at a configurable cadence and every browser simply polls the Flask API for the most recent snapshot. Because each HTTP request is served from the shared cache, multiple viewers do not generate additional load on exporter nodes.
+The dashboard maintains an in-memory cache of exporter responses. A background worker refreshes the cache at a cadence that tracks the fastest active browser but automatically relaxes as connected clients increase their polling interval. Every browser simply polls the Flask API for the most recent snapshot, so multiple viewers share the same cached data without hitting exporter nodes repeatedly.
 
 Environment variables (set before starting the dashboard service) allow tuning this behaviour:
 

@@ -36,10 +36,12 @@ def test_host_metrics_cache_force_refresh(monkeypatch, sample_exporter_payload):
     assert data == [sample_exporter_payload]
     assert snapshot["last_refresh_utc"] is not None
     assert snapshot["error"] is None
+    assert snapshot["refresh_interval_seconds"] == custom_cache.refresh_interval
 
     cached_data, cached_snapshot = custom_cache.get_data()
     assert cached_data == data
     assert cached_snapshot["last_refresh_utc"] == snapshot["last_refresh_utc"]
+    assert cached_snapshot["refresh_interval_seconds"] == custom_cache.refresh_interval
 
 
 def test_host_metrics_cache_refreshes_when_stale(monkeypatch):
@@ -88,6 +90,62 @@ def test_api_data_returns_cached_payload(monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["metadata"]["served_from"] == "forced"
+
+
+def test_api_data_adjusts_refresh_interval_to_fastest_client(monkeypatch):
+    client = dashboard.app.test_client()
+    sample_data = [make_sample_host("tracked-host")]
+    sample_snapshot = {
+        "last_refresh_utc": "2024-04-01T00:00:00Z",
+        "stale_for_seconds": 0.0,
+        "error": None,
+    }
+
+    def fake_get_data(force_refresh=False):
+        return sample_data, sample_snapshot | {"served_from": "forced" if force_refresh else "cache"}
+
+    monkeypatch.setattr(dashboard, "MONITORED_HOSTS", [{"name": "tracked-host", "api_url": "http://localhost"}])
+    monkeypatch.setattr(dashboard.host_cache, "get_data", fake_get_data)
+
+    original_set_refresh = dashboard.host_cache.set_refresh_interval
+    set_calls = []
+
+    def tracking_set_refresh(interval_seconds: float) -> bool:
+        changed = original_set_refresh(interval_seconds)
+        set_calls.append((interval_seconds, changed))
+        return changed
+
+    monkeypatch.setattr(dashboard.host_cache, "set_refresh_interval", tracking_set_refresh)
+
+    tracker = dashboard.ClientIntervalTracker(fallback_interval=10.0, idle_multiplier=1.0, min_idle_seconds=5.0)
+    monkeypatch.setattr(dashboard, "client_interval_tracker", tracker)
+
+    try:
+        response = client.get(
+            "/api/data",
+            query_string={"client_interval_seconds": "12"},
+            environ_overrides={"REMOTE_ADDR": "1.1.1.1"},
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert set_calls[-1][0] == 12
+        assert payload["metadata"]["cache_refresh_interval_seconds"] == 12
+        assert payload["metadata"]["client_effective_interval_seconds"] == 12
+        assert payload["metadata"]["active_client_count"] == 1
+
+        response = client.get(
+            "/api/data",
+            query_string={"client_interval_seconds": "3"},
+            environ_overrides={"REMOTE_ADDR": "2.2.2.2"},
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert set_calls[-1][0] == 3
+        assert payload["metadata"]["cache_refresh_interval_seconds"] == 3
+        assert payload["metadata"]["client_effective_interval_seconds"] == 3
+        assert payload["metadata"]["active_client_count"] == 2
+    finally:
+        original_set_refresh(dashboard.CACHE_REFRESH_SECONDS)
 
 
 def test_api_data_handles_no_hosts(monkeypatch):
