@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="System & GPU Metrics Exporter",
     description="Exposes system CPU, RAM, and NVIDIA GPU metrics.",
-    version="1.0.3" # Incremented version for these fixes
+    version="1.0.3"
 )
 
 def get_disk_metrics() -> List[Dict[str, Any]]:
@@ -145,14 +145,9 @@ def get_gpu_metrics() -> List[Dict[str, Any]]:
         if not devices:
             return [{"message": "No NVIDIA GPUs found or nvitop could not access them."}]
 
-        for i, gpu_device in enumerate(devices): # Renamed to gpu_device to avoid conflict
+        for i, gpu_device in enumerate(devices):
             processes_info = []
             try:
-                # Corrected access: gpu_device.processes() returns a Dict[int, GpuProcess]
-                # The values of this dictionary are the GpuProcess instances.
-                # We also call GpuProcess.take_snapshots to get enriched Snapshot objects
-                # which have more readily available attributes and handle errors/NA values.
-                
                 # Get the dictionary of GpuProcess objects
                 gpu_process_map = gpu_device.processes() 
                 

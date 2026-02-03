@@ -1,965 +1,727 @@
-let refreshIntervalId = null;
-let autoRefreshEnabled = true;
-let currentRefreshIntervalMs = 15000; // Default to 15 seconds in milliseconds, will be updated from input/localStorage
-let currentDashboardView = 'overview'; // Default or set by initializeDashboard
-let ongoingFetchPromise = null;
-let lastFetchCompletedAtMs = 0;
-const MIN_FETCH_GAP_MS = 1000; // Avoid hammering the API when manual triggers cluster together
+/**
+ * nvitop-dashboard Frontend Logic
+ * Refactored for modularity, ES6+ standards, and modern error handling.
+ */
 
-// Function to get the current interval from the input field
-function getRefreshIntervalMs() {
-    const intervalInput = document.getElementById('refreshIntervalInput');
-    if (intervalInput) {
-        let seconds = parseInt(intervalInput.value, 10);
-        const minSeconds = parseInt(intervalInput.min, 10) || 1;
-        const maxSeconds = parseInt(intervalInput.max, 10) || 300;
+class DashboardApp {
+    constructor() {
+        this.config = {
+            refreshIntervalMs: 15000,
+            autoRefresh: true,
+            minFetchGapMs: 1000,
+            viewType: 'overview' // 'overview' or 'detailed'
+        };
 
-        if (isNaN(seconds) || seconds < minSeconds || seconds > maxSeconds) {
-            seconds = 15; // Default to 15s if input is invalid or out of bounds
-            intervalInput.value = seconds; // Correct the input field
-            console.warn(`Invalid interval: ${intervalInput.value}. Resetting to ${seconds}s.`);
+        this.state = {
+            hosts: [],
+            lastFetchTime: 0,
+            fetchPromise: null,
+            timerId: null
+        };
+
+        this.els = {
+            container: document.getElementById('dashboardContainer'),
+            lastUpdated: document.getElementById('lastUpdated'),
+            refreshStatus: document.getElementById('refreshStatus'),
+            intervalInput: document.getElementById('refreshIntervalInput'),
+            toggleBtn: document.getElementById('toggleRefresh'),
+            reloadBtn: document.getElementById('reloadConfigBtn'),
+            themeSelect: document.getElementById('themeSelect'),
+            themeLink: document.getElementById('theme-stylesheet')
+        };
+    }
+
+    /**
+     * Entry point to initialize the dashboard.
+     * @param {Array} initialHosts - List of host objects from server template.
+     * @param {string} viewType - 'overview' or 'detailed'.
+     */
+    init(initialHosts, viewType) {
+        this.config.viewType = viewType;
+        this.state.hosts = initialHosts || [];
+
+        console.log(`Initializing Dashboard (${viewType}) with ${this.state.hosts.length} hosts.`);
+
+        this._loadSettings();
+        this._setupEventListeners();
+        this._renderInitialStructure();
+
+        // Start the loop
+        this.startAutoRefresh();
+        this.fetchData();
+    }
+
+
+
+    _setupEventListeners() {
+        if (this.els.toggleBtn) {
+            this.els.toggleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.toggleAutoRefresh();
+            });
         }
-        return seconds * 1000; // Convert to milliseconds
-    }
-    console.warn("Refresh interval input not found, defaulting to 15000ms.");
-    return 15000; // Default if input not found
-}
 
-function updateRefreshStatusLabel() {
-    const refreshStatusEl = document.getElementById('refreshStatus');
-    if (!refreshStatusEl) return;
-    refreshStatusEl.textContent = autoRefreshEnabled ? 'ON' : 'OFF';
-}
+        if (this.els.intervalInput) {
+            this.els.intervalInput.addEventListener('change', () => {
+                let seconds = parseInt(this.els.intervalInput.value, 10);
+                if (isNaN(seconds) || seconds < 1) seconds = 15;
+                this.els.intervalInput.value = seconds;
 
-// Function to (re)start the interval timer
-function startRefreshInterval() {
-    if (refreshIntervalId) {
-        clearInterval(refreshIntervalId);
-        refreshIntervalId = null;
-    }
-    if (autoRefreshEnabled) {
-        currentRefreshIntervalMs = getRefreshIntervalMs(); // Get the latest value from input
-        console.log(`Starting refresh interval at ${currentRefreshIntervalMs / 1000} seconds.`);
-        refreshIntervalId = setInterval(() => fetchAndUpdateAllData(false), currentRefreshIntervalMs);
-    }
-    updateRefreshStatusLabel();
-}
+                this.config.refreshIntervalMs = seconds * 1000;
+                localStorage.setItem('dashboardRefreshIntervalSeconds', seconds);
 
-function initializeDashboard(hostsConfig, viewType = 'overview') {
-    console.log(`Initializing dashboard with config for ${viewType} view:`, hostsConfig);
-    currentDashboardView = viewType;
-
-    const dashboardContainer = document.getElementById('dashboardContainer');
-    if (!dashboardContainer) {
-        console.error("Dashboard container not found!");
-        return;
-    }
-    dashboardContainer.innerHTML = '';
-
-    const loadingMsgElement = document.createElement('p');
-    loadingMsgElement.id = 'loadingMessage';
-    loadingMsgElement.textContent = 'Loading data for configured hosts...';
-    dashboardContainer.appendChild(loadingMsgElement);
-
-    // Set interval input value from localStorage or default
-    const intervalInput = document.getElementById('refreshIntervalInput');
-    if (intervalInput) {
-        const savedIntervalSeconds = localStorage.getItem('dashboardRefreshIntervalSeconds');
-        if (savedIntervalSeconds) {
-            intervalInput.value = savedIntervalSeconds;
+                console.log(`Interval updated to ${seconds}s`);
+                this.startAutoRefresh(); // Restart timer
+            });
         }
-        // currentRefreshIntervalMs will be set by startRefreshInterval called below
-    }
 
-    if (!hostsConfig || hostsConfig.length === 0) {
-        const loadingMsg = document.getElementById('loadingMessage');
-        if (loadingMsg) {
-            loadingMsg.textContent = 'No hosts configured. Please check monitored_hosts_config.json and reload config if needed.';
+        if (this.els.reloadBtn) {
+            this.els.reloadBtn.addEventListener('click', () => this.reloadConfig());
         }
-        updateLastUpdatedTimestamp(false);
-        return;
-    }
 
-    hostsConfig.forEach(host => {
-        let hostCard;
-        if (currentDashboardView === 'overview') {
-            hostCard = createOverviewHostCardStructure(host);
-        } else {
-            hostCard = createDetailedHostCardStructure(host);
-        }
-        dashboardContainer.appendChild(hostCard);
-    });
-
-    fetchAndUpdateAllData();
-    startRefreshInterval(); // Use the new function to start/restart with current interval value
-    setupEventListeners();
-    updateRefreshStatusLabel();
-}
-
-function setupEventListeners() {
-    const toggleRefreshLink = document.getElementById('toggleRefresh');
-    if (toggleRefreshLink) {
-        toggleRefreshLink.removeEventListener('click', handleToggleRefresh);
-        toggleRefreshLink.addEventListener('click', handleToggleRefresh);
-    }
-
-    const reloadConfigBtn = document.getElementById('reloadConfigBtn');
-    if (reloadConfigBtn) {
-        reloadConfigBtn.removeEventListener('click', handleReloadConfig);
-        reloadConfigBtn.addEventListener('click', handleReloadConfig);
-    }
-
-    const intervalInput = document.getElementById('refreshIntervalInput');
-    if (intervalInput) {
-        intervalInput.removeEventListener('change', handleIntervalChange);
-        intervalInput.addEventListener('change', handleIntervalChange);
-    }
-}
-
-function handleIntervalChange() {
-    const newIntervalMs = getRefreshIntervalMs();
-    // currentRefreshIntervalMs is updated inside startRefreshInterval
-    console.log(`Refresh interval input changed. New value: ${newIntervalMs / 1000} seconds.`);
-    localStorage.setItem('dashboardRefreshIntervalSeconds', newIntervalMs / 1000);
-    startRefreshInterval();
-    if (autoRefreshEnabled) {
-        fetchAndUpdateAllData();
-    }
-}
-
-function handleToggleRefresh(event) {
-    event.preventDefault();
-    autoRefreshEnabled = !autoRefreshEnabled;
-    if (autoRefreshEnabled) {
-        console.log("Auto-refresh enabled.");
-        startRefreshInterval();
-        fetchAndUpdateAllData();
-    } else {
-        console.log("Auto-refresh disabled.");
-        if (refreshIntervalId) {
-            clearInterval(refreshIntervalId);
-            refreshIntervalId = null;
+        if (this.els.themeSelect) {
+            this.els.themeSelect.addEventListener('change', (e) => {
+                this.setTheme(e.target.value);
+            });
         }
     }
-    updateRefreshStatusLabel();
-}
 
-async function handleReloadConfig() {
-    console.log("Reloading host configuration...");
-    try {
-        const response = await fetch('/api/config/reload', { method: 'POST' });
-        const result = await response.json();
-        alert(result.message || "Configuration reload processed.");
-
-        const dataResponse = await fetch('/api/data?fresh=1');
-        const payload = await dataResponse.json();
-        const payloadMetadata = !Array.isArray(payload) ? (payload.metadata || {}) : {};
-        const payloadError = !Array.isArray(payload) ? (payload.error || payloadMetadata.error) : null;
-        const newHostData = Array.isArray(payload) ? payload : payload.data;
-
-        if (payloadError) {
-            console.error("Reload config: /api/data reported an error.", payloadError);
-            const dashboardContainer = document.getElementById('dashboardContainer');
-            if (dashboardContainer) {
-                dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Failed to load new host data after config reload: ${payloadError}</p>`;
+    _loadSettings() {
+        // Load Refresh Interval
+        if (this.els.intervalInput) {
+            const saved = localStorage.getItem('dashboardRefreshIntervalSeconds');
+            if (saved) {
+                const val = parseInt(saved, 10);
+                if (val > 0) {
+                    this.els.intervalInput.value = val;
+                    this.config.refreshIntervalMs = val * 1000;
+                }
             }
-            return;
-        }
-        if (!Array.isArray(newHostData)) {
-            console.error("Reload config: /api/data did not return an array.", payload);
-            return;
+            this.config.refreshIntervalMs = parseInt(this.els.intervalInput.value, 10) * 1000;
         }
 
-        const newHostsConfig = newHostData.map(host => ({ name: host.name, api_url: host.url }));
-
-        const loadingMsg = document.getElementById('loadingMessage');
-        if (loadingMsg) loadingMsg.remove();
-
-        initializeDashboard(newHostsConfig, currentDashboardView);
-        fetchAndUpdateAllData(true);
-
-    } catch (error) {
-        console.error('Error reloading host configuration:', error);
-        alert('Failed to reload host configuration.');
+        // Load Theme
+        const savedTheme = localStorage.getItem('dashboardTheme') || 'glass';
+        this.setTheme(savedTheme);
     }
-}
 
-function createDetailedHostCardStructure(hostConfig) {
-    const cardId = `host-card-detailed-${hostConfig.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const card = document.createElement('div');
-    card.className = 'host-card';
-    card.id = cardId;
-    card.innerHTML = `
-        <h2>
-            <span>${hostConfig.name} <span class="status-dot"></span></span>
-            <a href="${hostConfig.api_url || '#'}" target="_blank" class="hostname-link" title="Open exporter API endpoint">${hostConfig.api_url ? new URL(hostConfig.api_url).hostname : 'N/A'}</a>
-        </h2>
-        <div class="timestamp">Last data: <span class="data-timestamp">Waiting...</span></div>
-        <div class="error-message" style="display: none;"></div>
-        <div class="stats-section">
-            <h3 class="section-title">System Vitals</h3>
+    setTheme(themeName) {
+        if (!this.els.themeLink) return;
+
+        // Map theme names to filenames
+        const themeMap = {
+            'glass': 'theme_glass.css',
+            'classic': 'theme_classic.css'
+        };
+
+        const filename = themeMap[themeName] || 'theme_glass.css';
+
+        // Determine base path from current href to preserve relative paths
+        const currentHref = this.els.themeLink.getAttribute('href');
+        const basePath = currentHref.substring(0, currentHref.lastIndexOf('/') + 1);
+
+        this.els.themeLink.setAttribute('href', basePath + filename);
+
+        if (this.els.themeSelect) {
+            this.els.themeSelect.value = themeName;
+        }
+
+        localStorage.setItem('dashboardTheme', themeName);
+        console.log(`Theme set to: ${themeName} (${filename})`);
+    }
+
+    _renderInitialStructure() {
+        this.els.container.innerHTML = '';
+
+        if (!this.state.hosts.length) {
+            this.showError('No hosts configured. Please checking settings or monitored_hosts.json.');
+            return;
+        }
+
+        this.state.hosts.forEach(host => {
+            const card = this.config.viewType === 'overview'
+                ? this._createOverviewCard(host)
+                : this._createDetailedCard(host);
+            this.els.container.appendChild(card);
+        });
+    }
+
+    startAutoRefresh() {
+        if (this.state.timerId) clearInterval(this.state.timerId);
+
+        this._updateStatusUI();
+
+        if (!this.config.autoRefresh) return;
+
+        console.log(`Starting auto-refresh every ${this.config.refreshIntervalMs}ms`);
+        this.state.timerId = setInterval(() => {
+            this.fetchData();
+        }, this.config.refreshIntervalMs);
+    }
+
+    toggleAutoRefresh() {
+        this.config.autoRefresh = !this.config.autoRefresh;
+        this.startAutoRefresh();
+    }
+
+    _updateStatusUI() {
+        if (this.els.refreshStatus) {
+            this.els.refreshStatus.textContent = this.config.autoRefresh ? 'ON' : 'OFF';
+            this.els.refreshStatus.className = this.config.autoRefresh ? 'status-on' : 'status-off';
+        }
+    }
+
+    async reloadConfig() {
+        try {
+            this.showToast('Reloading configuration...');
+            const res = await fetch('/api/config/reload', { method: 'POST' });
+            const data = await res.json();
+
+            // Force a fresh fetch to get the new host list
+            await this.fetchData(true);
+
+            // Reload page to ensure clean state
+            location.reload();
+        } catch (err) {
+            console.error('Config reload failed:', err);
+            this.showError('Failed to reload configuration.');
+        }
+    }
+
+    async fetchData(force = false) {
+        const now = Date.now();
+        // Debounce
+        if (!force && now - this.state.lastFetchTime < this.config.minFetchGapMs) return;
+        if (this.state.fetchPromise) return this.state.fetchPromise;
+
+        const intervalSec = (this.config.refreshIntervalMs / 1000).toFixed(0);
+        const url = `/api/data?client_interval_seconds=${intervalSec}${force ? '&fresh=1' : ''}`;
+
+        this.state.fetchPromise = (async () => {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const json = await res.json();
+                this._processData(json);
+                this.state.lastFetchTime = Date.now();
+            } catch (err) {
+                console.error('Fetch error:', err);
+                this._handleGlobalError(err);
+            } finally {
+                this.state.fetchPromise = null;
+            }
+        })();
+
+        return this.state.fetchPromise;
+    }
+
+    _processData(responsePayload) {
+        // Handle normalization (array vs object with metadata)
+        let data = [];
+        let metadata = {};
+
+        if (Array.isArray(responsePayload)) {
+            data = responsePayload;
+        } else {
+            data = responsePayload.data || [];
+            metadata = responsePayload.metadata || {};
+        }
+
+        if (metadata.error) {
+            this.showError(metadata.error);
+        }
+
+        // Update timestamp
+        if (this.els.lastUpdated) {
+            const ts = metadata.last_refresh_utc
+                ? new Date(metadata.last_refresh_utc).toLocaleTimeString()
+                : new Date().toLocaleTimeString();
+            this.els.lastUpdated.textContent = ts;
+        }
+
+        // Update cards
+        data.forEach(hostData => {
+            try {
+                if (this.config.viewType === 'overview') {
+                    this._updateOverviewCard(hostData);
+                } else {
+                    this._updateDetailedCard(hostData);
+                }
+            } catch (e) {
+                console.error(`Error updating host ${hostData.name}:`, e);
+                this._showCardError(hostData.name, e.message);
+            }
+        });
+    }
+
+    _showCardError(hostname, msg) {
+        const id = `host-${this._sanitizeId(hostname)}`;
+        const card = document.getElementById(id);
+        if (card) {
+            const ts = card.querySelector('.timestamp');
+            if (ts) {
+                ts.textContent = 'Client Update Error';
+                ts.style.color = 'var(--error-color)';
+                ts.title = msg;
+            }
+        }
+    }
+
+    _handleGlobalError(err) {
+        if (this.els.lastUpdated) {
+            this.els.lastUpdated.textContent = 'Connection Error';
+            this.els.lastUpdated.style.color = 'var(--error-color)';
+        }
+    }
+
+    // --- Overview View ---
+
+    _createOverviewCard(host) {
+        const div = document.createElement('div');
+        div.className = 'overview-host-card';
+        div.id = `host-${this._sanitizeId(host.name)}`;
+
+        const hostname = this._extractHostname(host.api_url);
+
+        div.innerHTML = `
+            <h2>
+                <span>${host.name} <span class="status-dot"></span></span>
+                <a href="${host.api_url || '#'}" target="_blank" class="hostname-link">${hostname}</a>
+            </h2>
+            <div class="overview-metrics-grid">
+                <div class="overview-metric-item">
+                    <strong>CPU</strong>
+                    <span class="metric-value cpu-val">--</span>
+                    <div class="overview-progress-bar-container"><div class="overview-progress-bar cpu-bar"></div></div>
+                </div>
+                <div class="overview-metric-item">
+                    <strong>RAM</strong>
+                    <span class="metric-value ram-val">--</span>
+                    <div class="overview-progress-bar-container"><div class="overview-progress-bar ram-bar"></div></div>
+                </div>
+                <div class="overview-metric-item load-metric">
+                     <strong>Load Avg (1/5/15)</strong>
+                     <span class="metric-value load-val-overview">--</span>
+                     <div class="load-max-text" style="display:none;font-size:0.8em;color:var(--text-secondary);"></div>
+                     <div class="overview-progress-bar-container"><div class="overview-progress-bar load-bar"></div></div>
+                </div>
+            </div>
+            
+            <div class="overview-disk-list overview-metric-item disk-metric" style="display:none;"></div>
+
+            <div class="gpus-container"></div>
+            <div class="timestamp">Wait...</div>
+        `;
+        return div;
+    }
+
+    _updateOverviewCard(data) {
+        const id = `host-${this._sanitizeId(data.name)}`;
+        const card = document.getElementById(id);
+        if (!card) return;
+
+        const system = data.system || {};
+        const isError = !!data.error || !!system.error;
+
+        // Status Dot
+        const dot = card.querySelector('.status-dot');
+        if (dot) dot.className = `status-dot ${isError ? 'error' : 'ok'}`;
+
+        // CPU/RAM
+        this._updateMetric(card, '.cpu-val', '.cpu-bar', system.cpu_percent, '%', isError);
+        this._updateMetric(card, '.ram-val', '.ram-bar', system.memory_percent, '%', isError);
+
+        // GPUs
+        const gpuContainer = card.querySelector('.gpus-container');
+        gpuContainer.innerHTML = ''; // Rebuild for simplicity
+
+        if (data.gpus && data.gpus.length && !data.error) {
+            data.gpus.forEach(gpu => {
+                if (gpu.error) {
+                    gpuContainer.innerHTML += `<div class="overview-gpu-card error"><small>${gpu.error}</small></div>`;
+                    return;
+                }
+                const util = gpu.utilization_gpu_percent || 0;
+                const mem = gpu.memory_percent || 0;
+
+                const users = this._getGPUUsers(gpu);
+                const hasMultipleUsers = users.length > 1;
+                const userTags = users.map(u => {
+                    const cmdList = u.commands.join(', ');
+                    const warningClass = hasMultipleUsers ? ' multi-user-warning' : '';
+                    return `<li class="overview-user-tag${warningClass}" title="User: ${u.username}&#10;Process: ${cmdList}"><i class="user-icon">👤</i>${u.username}</li>`;
+                }).join('');
+
+                const usersHtml = userTags ? `<div class="overview-gpu-processes"><strong>Users:</strong> <ul class="overview-user-list">${userTags}</ul></div>` : '';
+
+                const el = document.createElement('div');
+                el.className = 'overview-gpu-card';
+                // Using gpu.name as requested
+                el.innerHTML = `
+                    <h4>${this._cleanGpuName(gpu.name)} <small>(GPU ${gpu.id}, ${Math.ceil(gpu.memory_total_mib / 1024)}GB)</small></h4>
+                    <div class="overview-gpu-metric-row" title="GPU Utilization: ${util}%">
+                        <span class="gpu-metric-label">Util</span>
+                        <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-util-bar" style="width:${util}%"></div></div>
+                        <span class="gpu-metric-value">${util.toFixed(0)}%</span>
+                    </div>
+                    <div class="overview-gpu-metric-row" title="Memory Usage: ${mem}%">
+                        <span class="gpu-metric-label">Mem</span>
+                        <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-mem-bar" style="width:${mem}%"></div></div>
+                        <span class="gpu-metric-value">${mem.toFixed(0)}%</span>
+                    </div>
+                    ${usersHtml}
+                `;
+                gpuContainer.appendChild(el);
+
+                // Apply color classes to GPU bars
+                const utilBar = el.querySelector('.gpu-util-bar');
+                const memBar = el.querySelector('.gpu-mem-bar');
+                if (utilBar) {
+                    const utilClass = this._getUsageClass(util);
+                    if (utilClass) utilBar.classList.add(utilClass);
+                }
+                if (memBar) {
+                    const memClass = this._getUsageClass(mem);
+                    if (memClass) memBar.classList.add(memClass);
+                }
+            });
+        } else if (isError) {
+            gpuContainer.innerHTML = `<div class="error-message">${data.error || system.error}</div>`;
+        }
+
+        // Update CPU Load Metrics
+        // We will update the values here assuming element exists.
+
+        const loadValEl = card.querySelector('.load-val-overview');
+        const loadMaxEl = card.querySelector('.load-metric .load-max-text');
+        const loadBar = card.querySelector('.load-metric .load-bar');
+
+        if (loadValEl) {
+            const l1 = system.load_average_1m;
+            const l5 = system.load_average_5m;
+            const l15 = system.load_average_15m;
+
+            // Format: 1.05 / 0.80 / 0.60
+            loadValEl.textContent = `${l1 !== undefined ? l1.toFixed(2) : '-'} / ${l5 !== undefined ? l5.toFixed(2) : '-'} / ${l15 !== undefined ? l15.toFixed(2) : '-'}`;
+
+            const threads = system.load_max || system.cpu_count || system.logical_cpu_count;
+            if (threads) {
+                if (loadMaxEl) {
+                    loadMaxEl.style.display = 'inline';
+                    loadMaxEl.textContent = ` (${threads} threads)`;
+                }
+
+                // Calc % based on 1m load
+                if (loadBar && l1 !== undefined) {
+                    const rawPct = (l1 / threads) * 100;
+                    const displayPct = Math.min(100, rawPct); // Cap display width at 100%
+                    loadBar.style.width = `${displayPct}%`;
+                    loadBar.className = 'overview-progress-bar load-bar'; // reset
+
+                    // Add overload class if exceeding 100%
+                    if (rawPct > 100) {
+                        loadBar.classList.add('overload');
+                    } else {
+                        const usageClass = this._getUsageClass(rawPct);
+                        if (usageClass) loadBar.classList.add(usageClass);
+                    }
+                }
+            } else {
+                if (loadMaxEl) loadMaxEl.style.display = 'none';
+                if (loadBar) loadBar.style.width = '0%';
+            }
+        }
+
+        // Update Load Bar if present
+
+        // Disks logic...
+
+        // Disks
+        const diskContainer = card.querySelector('.overview-disk-list');
+        if (diskContainer) {
+            if (system.disks && system.disks.length > 0) {
+                diskContainer.style.display = 'flex';
+                // Reuse the same helper but with different view type
+
+                diskContainer.innerHTML = '';
+                system.disks.forEach(disk => {
+                    const dEl = document.createElement('div');
+                    dEl.className = 'disk-item';
+                    dEl.innerHTML = `
+                        <div class="disk-item-header">
+                            <span class="disk-label" title="${disk.path}">${disk.label}</span>
+                            <span class="disk-percent">${disk.percent_used.toFixed(0)}%</span>
+                        </div>
+                        <div class="overview-progress-bar-container">
+                            <div class="overview-progress-bar ${this._getUsageClass(disk.percent_used)}" style="width:${disk.percent_used}%"></div>
+                        </div>
+                        <div class="disk-usage-details">${disk.used_gb.toFixed(1)} / ${disk.total_gb.toFixed(1)} GB</div>
+                    `;
+                    diskContainer.appendChild(dEl);
+                });
+            } else {
+                diskContainer.style.display = 'none';
+            }
+        }
+
+        // Timestamp
+        const ts = card.querySelector('.timestamp');
+        if (ts) ts.textContent = data.fetch_time_utc ? new Date(data.fetch_time_utc).toLocaleTimeString() : 'Error';
+    }
+
+    // --- Detailed View ---
+
+    _createDetailedCard(host) {
+        const div = document.createElement('div');
+        div.className = 'host-card';
+        div.id = `host-${this._sanitizeId(host.name)}`;
+        const hostname = this._extractHostname(host.api_url);
+
+        div.innerHTML = `
+            <h2>
+                <span>${host.name} <span class="status-dot"></span></span>
+                <a href="${host.api_url || '#'}" target="_blank" class="hostname-link">${hostname}</a>
+            </h2>
+            
             <div class="metrics-grid">
-                 <div class="metric-item">
+                <div class="metric-item">
                     <strong>CPU Usage</strong>
-                    <span class="cpu-percent">N/A</span>%
-                    <div class="progress-bar-container"><div class="progress-bar cpu-progress"></div></div>
+                    <div class="metric-value cpu-val">--</div>
+                    <div class="progress-bar-container"><div class="progress-bar cpu-bar"></div></div>
                 </div>
                 <div class="metric-item">
-                    <strong>Memory Usage</strong>
-                    <span class="memory-percent">N/A</span>% (<span class="memory-used">N/A</span> / <span class="memory-total">N/A</span> GB)
-                    <div class="progress-bar-container"><div class="progress-bar memory-progress"></div></div>
+                    <strong>Memory</strong>
+                    <div class="metric-value ram-val">--</div>
+                    <div class="progress-bar-container"><div class="progress-bar ram-bar"></div></div>
+                    <small class="ram-detail" style="color:var(--text-secondary)">-- / -- GB</small>
                 </div>
-                <div class="metric-item load-metric">
-                    <strong>CPU Load (1m / 5m / 15m)</strong>
-                    <div class="load-average-values">
-                        <span class="load-val-1">N/A</span> /
-                        <span class="load-val-5">N/A</span> /
-                        <span class="load-val-15">N/A</span>
-                    </div>
-                    <div class="load-max-text">Max: <span class="load-max-value">N/A</span></div>
-                    <div class="progress-bar-container"><div class="progress-bar load-progress"></div></div>
-                </div>
-                <div class="metric-item disk-metric">
-                    <strong>Disk Usage</strong>
-                    <div class="disk-usage-list detailed-disk-list">
-                        <p class="no-disk-data">No disk data.</p>
-                    </div>
+                <div class="metric-item">
+                     <strong>Load Avg (1/5/15)</strong>
+                     <div class="metric-value load-val" style="font-family:var(--font-mono); font-size:1rem;">-- / -- / --</div>
+                     <div class="progress-bar-container"><div class="progress-bar load-bar"></div></div>
                 </div>
             </div>
-        </div>
-        <div class="stats-section">
-            <h3 class="section-title">GPUs</h3>
-            <div class="gpus-container">
-                <p class="no-gpu-message" style="display: none;">No GPU data available or no GPUs found.</p>
-            </div>
-        </div>`;
-    return card;
-}
 
-function createOverviewHostCardStructure(hostConfig) {
-    const cardId = `host-card-overview-${hostConfig.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const card = document.createElement('div');
-    card.className = 'overview-host-card';
-    card.id = cardId;
-    const hostnameDisplay = hostConfig.api_url ? new URL(hostConfig.api_url).hostname : 'N/A';
-    card.innerHTML = `
-        <h2>
-            <span>${hostConfig.name} <span class="status-dot"></span></span>
-            <a href="${hostConfig.api_url || '#'}" target="_blank" class="hostname-link" title="Open exporter API endpoint">
-                ${hostnameDisplay.substring(0, 15) + (hostnameDisplay.length > 15 ? '...' : '')}
-            </a>
-        </h2>
-        <div class="error-message" style="display: none;"></div>
-        <div class="overview-metrics-grid">
-            <div class="overview-metric-item">
-                <strong>CPU</strong>
-                <span class="metric-value cpu-percent">N/A</span>%
-                <div class="overview-progress-bar-container"><div class="overview-progress-bar cpu-progress"></div></div>
-            </div>
-            <div class="overview-metric-item">
-                <strong>RAM</strong>
-                <span class="metric-value memory-percent">N/A</span>%
-                <div class="overview-progress-bar-container"><div class="overview-progress-bar memory-progress"></div></div>
-            </div>
-            <div class="overview-metric-item load-metric">
-                <strong>Load 1/5/15m</strong>
-                <div class="load-average-values overview-load-values">
-                    <span class="load-val-1">N/A</span> /
-                    <span class="load-val-5">N/A</span> /
-                    <span class="load-val-15">N/A</span>
-                </div>
-                <div class="load-max-text overview-load-max">Max: <span class="load-max-value">N/A</span></div>
-                <div class="overview-progress-bar-container"><div class="overview-progress-bar load-progress"></div></div>
-            </div>
-            <div class="overview-metric-item disk-metric">
-                <strong>Disk Usage</strong>
-                <div class="disk-usage-list overview-disk-list">
-                    <p class="no-disk-data">No disk data.</p>
-                </div>
-            </div>
-        </div>
-        <div class="gpus-overview-container">
-            <p class="no-gpu-message" style="display: none;">No GPUs.</p>
-        </div>
-        <div class="timestamp" style="font-size: 0.75em; text-align: right; margin-top: auto; padding-top: 0.5rem;">
-           <span class="data-timestamp">Waiting...</span>
-        </div>`;
-    return card;
-}
+            <div class="section-title">GPU Status</div>
+            <div class="gpus-container"></div>
+            
+            <div class="section-title">Disk Usage</div>
+            <div class="disk-container metrics-grid"></div>
 
-function updateLastUpdatedTimestamp(success = true, refreshUtc = null) {
-    const lastUpdatedEl = document.getElementById('lastUpdated');
-    if (lastUpdatedEl) {
-        if (success) {
-            let timestamp;
-            if (refreshUtc) {
-                const parsed = new Date(refreshUtc);
-                timestamp = isNaN(parsed.getTime()) ? new Date() : parsed;
-            } else {
-                timestamp = new Date();
-            }
-            lastUpdatedEl.textContent = timestamp.toLocaleTimeString();
-        } else {
-            lastUpdatedEl.textContent = "Update Error";
-        }
-    } else {
-        console.warn("Element with ID 'lastUpdated' not found.");
-    }
-}
-
-function processHostPayload(hostsData, metadata = {}) {
-    const loadingMsg = document.getElementById('loadingMessage');
-    if (Array.isArray(hostsData)) {
-        if (loadingMsg) loadingMsg.remove();
-    } else {
-        const errorMessage = metadata && metadata.error ? metadata.error : 'Unexpected response from API.';
-        console.error('Received non-array data while processing host payload:', hostsData);
-        if (loadingMsg && document.getElementById('dashboardContainer').contains(loadingMsg)) {
-            loadingMsg.textContent = `Error: ${errorMessage}`;
-            loadingMsg.style.color = 'red';
-        } else {
-            const dashboardContainer = document.getElementById('dashboardContainer');
-            if (dashboardContainer) {
-                dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Error from API: ${errorMessage}</p>`;
-            }
-        }
-        updateLastUpdatedTimestamp(false, metadata ? metadata.last_refresh_utc : null);
-        return;
+            <div class="timestamp">Last data: --</div>
+        `;
+        return div;
     }
 
-    hostsData.forEach(hostData => {
-        try {
-            if (currentDashboardView === 'overview') {
-                updateOverviewHostCard(hostData);
-            } else {
-                updateDetailedHostCard(hostData);
-            }
-        } catch (cardError) {
-            console.error(`Error updating card for host ${hostData.name}:`, cardError);
-            const cardId = `host-card-${currentDashboardView}-${hostData.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
-            const cardElement = document.getElementById(cardId);
-            if (cardElement) {
-                const errorEl = cardElement.querySelector('.error-message');
-                if (errorEl) {
-                    errorEl.textContent = "Error displaying data for this host.";
-                    errorEl.style.display = 'block';
-                }
-                const statusDot = cardElement.querySelector('.status-dot');
-                if (statusDot) statusDot.className = 'status-dot error';
-            }
-        }
-    });
+    _updateDetailedCard(data) {
+        const id = `host-${this._sanitizeId(data.name)}`;
+        const card = document.getElementById(id);
+        if (!card) return;
 
-    const hasMetadataError = Boolean(metadata && metadata.error);
-    updateLastUpdatedTimestamp(!hasMetadataError, metadata ? metadata.last_refresh_utc : null);
-    if (hasMetadataError) {
-        console.warn('Cache metadata reported an error:', metadata.error);
-    }
-}
+        const system = data.system || {};
+        const isError = !!data.error || !!system.error;
 
-async function fetchAndUpdateAllData(force = false) {
-    const now = Date.now();
+        // Dot
+        card.querySelector('.status-dot').className = `status-dot ${isError ? 'error' : 'ok'}`;
 
-    if (!force && ongoingFetchPromise) {
-        console.debug('Reusing in-flight fetch to avoid duplicate polling.');
-        return ongoingFetchPromise;
-    }
+        // CPU/RAM
+        this._updateMetric(card, '.cpu-val', '.cpu-bar', system.cpu_percent, '%', isError);
+        this._updateMetric(card, '.ram-val', '.ram-bar', system.memory_percent, '%', isError);
 
-    if (!force && now - lastFetchCompletedAtMs < MIN_FETCH_GAP_MS) {
-        console.debug('Skipping fetch; last update completed recently.');
-        return;
-    }
+        if (!isError) {
+            const used = system.memory_used_gb?.toFixed(1) || '-';
+            const total = system.memory_total_gb?.toFixed(1) || '-';
+            card.querySelector('.ram-detail').textContent = `${used} / ${total} GB`;
 
-    const intervalMs = Number.isFinite(currentRefreshIntervalMs) && currentRefreshIntervalMs > 0
-        ? currentRefreshIntervalMs
-        : getRefreshIntervalMs();
-    const intervalSeconds = Math.max(1, intervalMs / 1000);
+            const l1 = system.load_average_1m ?? '-';
+            const l5 = system.load_average_5m ?? '-';
+            const l15 = system.load_average_15m ?? '-';
+            card.querySelector('.load-val').textContent = `${l1} / ${l5} / ${l15}`;
 
-    const params = new URLSearchParams();
-    if (force) {
-        params.set('fresh', '1');
-    }
-    params.set('client_interval_seconds', intervalSeconds.toFixed(3));
+            // Update Load Bar
+            const loadBar = card.querySelector('.load-bar');
+            if (loadBar && system.load_average_1m !== undefined) {
+                const threads = system.load_max || system.cpu_count || system.logical_cpu_count;
+                if (threads) {
+                    const rawPct = (system.load_average_1m / threads) * 100;
+                    const displayPct = Math.min(100, rawPct);
+                    loadBar.style.width = `${displayPct}%`;
 
-    const endpoint = `/api/data?${params.toString()}`;
-    console.log(`Fetching data from ${endpoint} at ${new Date().toLocaleTimeString()} (Interval: ${intervalSeconds}s, force=${force})`);
+                    // Reset classes
+                    loadBar.className = 'progress-bar load-bar';
 
-    const fetchPromise = (async () => {
-        try {
-            const response = await fetch(endpoint, { cache: 'no-store' });
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status} ${response.statusText}`);
-            }
-
-            const payload = await response.json();
-            const metadata = Array.isArray(payload) ? {} : (payload.metadata || {});
-            const hostsData = Array.isArray(payload) ? payload : payload.data;
-
-            if (!Array.isArray(hostsData)) {
-                metadata.error = metadata.error || 'Malformed API response. Expected an array of hosts.';
-                processHostPayload(null, metadata);
-                return;
-            }
-
-            processHostPayload(hostsData, metadata);
-        } catch (error) {
-            console.error('Failed to fetch or update data globally:', error);
-            updateLastUpdatedTimestamp(false);
-            const loadingMsg = document.getElementById('loadingMessage');
-            const dashboardContainer = document.getElementById('dashboardContainer');
-
-            if (loadingMsg && dashboardContainer && dashboardContainer.contains(loadingMsg)) {
-                loadingMsg.textContent = `Error fetching data: ${error.message}. Check console.`;
-                loadingMsg.style.color = 'red';
-            } else if (dashboardContainer && !document.querySelector('.host-card') && !document.querySelector('.overview-host-card')) {
-                dashboardContainer.innerHTML = `<p style="color:red; text-align:center;">Error fetching data: ${error.message}.</p>`;
-            }
-        } finally {
-            lastFetchCompletedAtMs = Date.now();
-            ongoingFetchPromise = null;
-        }
-    })();
-
-    ongoingFetchPromise = fetchPromise;
-    return fetchPromise;
-}
-
-function updateDetailedHostCard(hostData) {
-    const cardId = `host-card-detailed-${hostData.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const card = document.getElementById(cardId);
-    if (!card) {
-        console.warn("Detailed card not found for host:", hostData.name);
-        return;
-    }
-
-    const errorMsgEl = card.querySelector('.error-message');
-    const statusDot = card.querySelector('.status-dot');
-    const dataTimestampEl = card.querySelector('.data-timestamp');
-
-    if (dataTimestampEl) {
-        dataTimestampEl.textContent = hostData.fetch_time_utc ? new Date(hostData.fetch_time_utc).toLocaleTimeString() : (hostData.error ? 'Error' : 'N/A');
-    }
-
-    if (hostData.error) {
-        errorMsgEl.textContent = `Error: ${hostData.error}`;
-        errorMsgEl.style.display = 'block';
-        if (statusDot) statusDot.className = 'status-dot error';
-        setNodeText(card, '.cpu-percent', 'N/A');
-        updateProgressBar(card, '.cpu-progress', 0, 'detailed');
-        setNodeText(card, '.memory-percent', 'N/A');
-        setNodeText(card, '.memory-used', 'N/A');
-        setNodeText(card, '.memory-total', 'N/A');
-        updateProgressBar(card, '.memory-progress', 0, 'detailed');
-        applyLoadMetrics(card, {}, 'detailed', 'N/A');
-        applyDiskMetrics(card, [], 'detailed', 'N/A');
-        card.querySelector('.gpus-container').innerHTML = '<p class="no-gpu-message" style="display: block;">Error fetching host data.</p>';
-        return;
-    }
-
-    errorMsgEl.style.display = 'none';
-    if (statusDot) statusDot.className = 'status-dot ok';
-
-    const system = hostData.system || {};
-    if (system.error) {
-        setNodeText(card, '.cpu-percent', 'Error');
-        updateProgressBar(card, '.cpu-progress', 0, 'detailed');
-        setNodeText(card, '.memory-percent', 'Error');
-        if (statusDot) statusDot.className = 'status-dot warning';
-    } else {
-        setNodeText(card, '.cpu-percent', (typeof system.cpu_percent === 'number' ? system.cpu_percent.toFixed(1) : 'N/A'));
-        updateProgressBar(card, '.cpu-progress', system.cpu_percent || 0, 'detailed');
-        setNodeText(card, '.memory-percent', (typeof system.memory_percent === 'number' ? system.memory_percent.toFixed(1) : 'N/A'));
-        setNodeText(card, '.memory-used', (typeof system.memory_used_gb === 'number' ? system.memory_used_gb.toFixed(2) : 'N/A'));
-        setNodeText(card, '.memory-total', (typeof system.memory_total_gb === 'number' ? system.memory_total_gb.toFixed(2) : 'N/A'));
-        updateProgressBar(card, '.memory-progress', system.memory_percent || 0, 'detailed');
-    }
-
-    const detailedLoadRatio = applyLoadMetrics(card, system, 'detailed', system.error ? 'Error' : 'N/A');
-    if (statusDot && detailedLoadRatio !== null && detailedLoadRatio > 100 && statusDot.classList.contains('ok')) {
-        statusDot.className = 'status-dot warning';
-    }
-
-    const diskSummary = applyDiskMetrics(card, Array.isArray(system.disks) ? system.disks : [], 'detailed', system.error ? 'Error' : 'N/A');
-    if (statusDot && diskSummary.maxPercent !== null && diskSummary.maxPercent > 95 && statusDot.classList.contains('ok')) {
-        statusDot.className = 'status-dot warning';
-    }
-
-    const gpusContainer = card.querySelector('.gpus-container');
-    const noGpuMsg = gpusContainer.querySelector('.no-gpu-message') || document.createElement('p');
-    if (!gpusContainer.querySelector('.no-gpu-message')) {
-        noGpuMsg.className = 'no-gpu-message';
-        noGpuMsg.style.display = 'none';
-        gpusContainer.appendChild(noGpuMsg);
-    }
-
-    Array.from(gpusContainer.querySelectorAll('.gpu-card')).forEach(gc => gc.remove());
-
-    if (hostData.gpus && Array.isArray(hostData.gpus) && hostData.gpus.length > 0) {
-        let hasValidGpu = false;
-        hostData.gpus.forEach(gpu => {
-            if (typeof gpu !== 'object' || gpu === null) {
-                console.warn("Malformed GPU data:", gpu); return;
-            }
-            if (gpu.error || gpu.message) {
-                const gpuErrorCard = document.createElement('div');
-                gpuErrorCard.className = 'gpu-card';
-                gpuErrorCard.innerHTML = `<h4>GPU ${gpu.id || 'N/A'}</h4><p class="error-message" style="font-size:0.9em;">${gpu.error || gpu.message}</p>`;
-                gpusContainer.appendChild(gpuErrorCard);
-                if (statusDot && statusDot.className === 'status-dot ok') statusDot.className = 'status-dot warning';
-                return;
-            }
-            hasValidGpu = true;
-
-            const gpuCard = document.createElement('div');
-            gpuCard.className = 'gpu-card';
-
-            // Calculate total GPU memory in GB (rounded up)
-            let totalMemGB = null;
-            if (typeof gpu.memory_total_mib === 'number') {
-                totalMemGB = Math.ceil(gpu.memory_total_mib / 1024);
-            }
-
-            let processesTable = '<p>No process data.</p>';
-            if (gpu.processes && Array.isArray(gpu.processes) && gpu.processes.length > 0 && !(gpu.processes[0] && gpu.processes[0].error_detail)) {
-                processesTable = `
-                    <table class="processes-table">
-                        <thead><tr><th>PID</th><th>User</th><th>GPU Mem (MiB)</th><th>CPU%</th><th>Command</th></tr></thead>
-                        <tbody>
-                            ${gpu.processes.map(p => `
-                                <tr>
-                                    <td>${p.pid || 'N/A'}</td>
-                                    <td>${p.username || 'N/A'}</td>
-                                    <td>${typeof p.gpu_memory_used_mib === 'number' ? p.gpu_memory_used_mib.toFixed(1) : 'N/A'}</td>
-                                    <td>${typeof p.cpu_percent === 'number' ? p.cpu_percent.toFixed(1) : 'N/A'}%</td>
-                                    <td class="command" title="${p.command || ''}">${(p.command || 'N/A').substring(0, 50)}${(p.command && p.command.length > 50) ? '...' : ''}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>`;
-            } else if (gpu.processes && gpu.processes[0] && gpu.processes[0].error_detail) {
-                processesTable = `<p class="error-message" style="font-size:0.9em;">Proc Error: ${gpu.processes[0].error_detail}</p>`;
-            }
-
-            gpuCard.innerHTML = `
-                <h4>GPU ${gpu.id !== undefined ? gpu.id : 'N/A'}: ${cleanGpuName(gpu.name) || 'N/A'}${totalMemGB !== null ? ` (${totalMemGB} GB)` : ''}</h4>
-                <div class="gpu-metric-row">
-                    <span class="gpu-metric-label">Util:</span>
-                    <div class="progress-bar-container"><div class="progress-bar gpu-util-progress"></div></div>
-                    <span class="gpu-metric-value gpu-util-val">${typeof gpu.utilization_gpu_percent === 'number' ? gpu.utilization_gpu_percent.toFixed(1) : 'N/A'}%</span>
-                </div>
-                <div class="gpu-metric-row">
-                    <span class="gpu-metric-label">Mem:</span>
-                    <div class="progress-bar-container"><div class="progress-bar gpu-mem-progress"></div></div>
-                    <span class="gpu-metric-value gpu-mem-val">${typeof gpu.memory_percent === 'number' ? gpu.memory_percent.toFixed(1) : 'N/A'}%</span>
-                </div>
-                <p style="text-align: right; font-size: 0.85em; margin-top: 0em; margin-bottom: 0.5em;">
-                    <small>(${typeof gpu.memory_used_mib === 'number' ? gpu.memory_used_mib.toFixed(1) : 'N/A'} / ${typeof gpu.memory_total_mib === 'number' ? gpu.memory_total_mib.toFixed(1) : 'N/A'} MiB)</small>
-                </p>
-                <p>Temp: ${typeof gpu.temperature_celsius === 'number' ? gpu.temperature_celsius : 'N/A'}°C | Fan: ${typeof gpu.fan_speed_percent === 'number' ? gpu.fan_speed_percent : 'N/A'}%</p>
-                <p>Pwr: ${typeof gpu.power_usage_watts === 'number' ? gpu.power_usage_watts.toFixed(1) : 'N/A'}W / ${typeof gpu.power_limit_watts === 'number' ? gpu.power_limit_watts.toFixed(1) : 'N/A'}W</p>
-                <div class="section-title" style="font-size:1rem; margin-top:0.5rem;">Processes</div>
-                ${processesTable}
-            `;
-            updateProgressBar(gpuCard, '.gpu-util-progress', gpu.utilization_gpu_percent || 0, 'detailed');
-            updateProgressBar(gpuCard, '.gpu-mem-progress', gpu.memory_percent || 0, 'detailed');
-            gpusContainer.appendChild(gpuCard);
-        });
-        if (noGpuMsg) noGpuMsg.style.display = hasValidGpu ? 'none' : 'block';
-        if (!hasValidGpu && noGpuMsg) noGpuMsg.textContent = "No valid GPU data to display.";
-    } else {
-        let gpuErrorText = "No GPUs detected or data unavailable.";
-        if (hostData.gpus && hostData.gpus.length > 0 && (hostData.gpus[0].error || hostData.gpus[0].message)) {
-            gpuErrorText = hostData.gpus[0].error || hostData.gpus[0].message;
-        }
-        if (noGpuMsg) {
-            noGpuMsg.textContent = gpuErrorText;
-            noGpuMsg.style.display = 'block';
-        }
-        if (statusDot && statusDot.className === 'status-dot ok') statusDot.className = 'status-dot warning';
-    }
-}
-
-function updateOverviewHostCard(hostData) {
-    const cardId = `host-card-overview-${hostData.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    const card = document.getElementById(cardId);
-    if (!card) {
-        console.warn("Overview card not found for host:", hostData.name);
-        return;
-    }
-
-    const errorMsgEl = card.querySelector('.error-message');
-    const statusDot = card.querySelector('.status-dot');
-    const dataTimestampEl = card.querySelector('.data-timestamp');
-    if (dataTimestampEl) {
-        dataTimestampEl.textContent = hostData.fetch_time_utc ? new Date(hostData.fetch_time_utc).toLocaleTimeString() : (hostData.error ? 'Error' : 'N/A');
-    }
-
-    if (hostData.error) {
-        errorMsgEl.textContent = `Error: ${hostData.error}`;
-        errorMsgEl.style.display = 'block';
-        if (statusDot) statusDot.className = 'status-dot error';
-        setNodeText(card, '.cpu-percent', 'ERR');
-        updateProgressBar(card, '.cpu-progress', 0, 'overview', false);
-        setNodeText(card, '.memory-percent', 'ERR');
-        updateProgressBar(card, '.memory-progress', 0, 'overview', false);
-        applyLoadMetrics(card, {}, 'overview', 'ERR');
-        applyDiskMetrics(card, [], 'overview', 'ERR');
-        card.querySelector('.gpus-overview-container').innerHTML = '<p class="no-gpu-message" style="display: block;">Error fetching host data.</p>';
-        return;
-    }
-    errorMsgEl.style.display = 'none';
-    if (statusDot) statusDot.className = 'status-dot ok';
-
-    const system = hostData.system || {};
-    if (system.error) {
-        setNodeText(card, '.cpu-percent', 'Error');
-        updateProgressBar(card, '.cpu-progress', 0, 'overview', false);
-        setNodeText(card, '.memory-percent', 'Error');
-        if (statusDot) statusDot.className = 'status-dot warning';
-    } else {
-        setNodeText(card, '.cpu-percent', (typeof system.cpu_percent === 'number' ? system.cpu_percent.toFixed(0) : 'N/A'));
-        updateProgressBar(card, '.cpu-progress', system.cpu_percent || 0, 'overview', false);
-        setNodeText(card, '.memory-percent', (typeof system.memory_percent === 'number' ? system.memory_percent.toFixed(0) : 'N/A'));
-        updateProgressBar(card, '.memory-progress', system.memory_percent || 0, 'overview', false);
-    }
-
-    const overviewLoadRatio = applyLoadMetrics(card, system, 'overview', system.error ? 'Error' : 'N/A');
-    if (statusDot && overviewLoadRatio !== null && overviewLoadRatio > 100 && statusDot.classList.contains('ok')) {
-        statusDot.className = 'status-dot warning';
-    }
-
-    const diskSummary = applyDiskMetrics(card, Array.isArray(system.disks) ? system.disks : [], 'overview', system.error ? 'Error' : 'N/A');
-    if (statusDot && diskSummary.maxPercent !== null && diskSummary.maxPercent > 95 && statusDot.classList.contains('ok')) {
-        statusDot.className = 'status-dot warning';
-    }
-
-    const gpusContainer = card.querySelector('.gpus-overview-container');
-    const noGpuMsg = gpusContainer.querySelector('.no-gpu-message') || document.createElement('p');
-    if (!gpusContainer.querySelector('.no-gpu-message')) {
-        noGpuMsg.className = 'no-gpu-message';
-        noGpuMsg.style.display = 'none';
-        gpusContainer.appendChild(noGpuMsg);
-    }
-    Array.from(gpusContainer.querySelectorAll('.overview-gpu-card')).forEach(gc => gc.remove());
-
-    if (hostData.gpus && Array.isArray(hostData.gpus) && hostData.gpus.length > 0) {
-        let hasValidGpu = false;
-        hostData.gpus.forEach(gpu => {
-            if (typeof gpu !== 'object' || gpu === null) {
-                console.warn("Malformed GPU data for overview:", gpu); return;
-            }
-            if (gpu.error || gpu.message) {
-                const gpuErrorDiv = document.createElement('div');
-                gpuErrorDiv.className = 'overview-gpu-card';
-                gpuErrorDiv.innerHTML = `<h4>GPU ${gpu.id || 'N/A'}</h4><p style="font-size:0.8em; color:red;">${gpu.error || gpu.message}</p>`;
-                gpusContainer.appendChild(gpuErrorDiv);
-                if (statusDot && statusDot.className === 'status-dot ok') statusDot.className = 'status-dot warning';
-                return;
-            }
-            hasValidGpu = true;
-            const gpuOverviewCard = document.createElement('div');
-            gpuOverviewCard.className = 'overview-gpu-card';
-
-            // Calculate total GPU memory in GB (rounded up)
-            let totalMemGB = null;
-            if (typeof gpu.memory_total_mib === 'number') {
-                totalMemGB = Math.ceil(gpu.memory_total_mib / 1024);
-            }
-
-            const processes = gpu.processes || [];
-            let userProcessMap = {};
-            let hasProcessData = false;
-
-            if (processes.length > 0 && !(processes[0] && processes[0].error_detail)) {
-                hasProcessData = true;
-                processes.forEach(p => {
-                    const user = p.username || 'N/A';
-                    if (!userProcessMap[user]) {
-                        userProcessMap[user] = [];
+                    if (rawPct > 100) {
+                        loadBar.classList.add('overload');
+                    } else {
+                        const usageClass = this._getUsageClass(rawPct);
+                        if (usageClass) loadBar.classList.add(usageClass);
                     }
-                    userProcessMap[user].push(p.command || 'N/A');
-                });
+                } else {
+                    loadBar.style.width = '0%';
+                }
             }
-
-            // Fallback to process_usernames if no detailed process data
-            const usernames = gpu.process_usernames || [];
-            let usernamesHtml = '';
-
-            if (hasProcessData) {
-                const users = Object.keys(userProcessMap).sort();
-                usernamesHtml = users.map(u => {
-                    const commands = userProcessMap[u].join('\n');
-                    // Escape quotes for the title attribute just in case
-                    const safeCommands = commands.replace(/"/g, '&quot;');
-                    return `<li class="overview-user-tag" title="${safeCommands}">${u}</li>`;
-                }).join('');
-            } else if (usernames.length > 0 && usernames[0] !== "N/A" && usernames[0] !== "None") {
-                usernamesHtml = usernames.map(u => `<li class="overview-user-tag">${u}</li>`).join('');
-            } else if (usernames.length > 0 && (usernames[0] === "N/A" || usernames[0] === "None")) {
-                usernamesHtml = `<li class="overview-user-tag"><i>${usernames[0]}</i></li>`;
-            } else {
-                usernamesHtml = "<li class=\"overview-user-tag\"><i>None</i></li>";
-            }
-
-            gpuOverviewCard.innerHTML = `
-                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(cleanGpuName(gpu.name) || 'N/A').substring(0, 15)}${(gpu.name && cleanGpuName(gpu.name).length > 15 ? "..." : "")}${totalMemGB !== null ? ` (${totalMemGB} GB)` : ''}</span></h4>
-                <div class="gpu-metric-row overview-gpu-metric-row">
-                    <span class="gpu-metric-label">Util:</span>
-                    <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-util-progress"></div></div>
-                    <span class="gpu-metric-value">${typeof gpu.utilization_gpu_percent === 'number' ? gpu.utilization_gpu_percent.toFixed(0) : 'N/A'}%</span>
-                </div>
-                <div class="gpu-metric-row overview-gpu-metric-row">
-                    <span class="gpu-metric-label">Mem:</span>
-                    <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-mem-progress"></div></div>
-                    <span class="gpu-metric-value">${typeof gpu.memory_percent === 'number' ? gpu.memory_percent.toFixed(0) : 'N/A'}%</span>
-                </div>
-                <div class="overview-gpu-processes">
-                    <strong>Users:</strong> <ul class="overview-user-list">${usernamesHtml}</ul>
-                </div>
-            `;
-            updateProgressBar(gpuOverviewCard, '.gpu-util-progress', gpu.utilization_gpu_percent || 0, 'overview', false);
-            updateProgressBar(gpuOverviewCard, '.gpu-mem-progress', gpu.memory_percent || 0, 'overview', false);
-            gpusContainer.appendChild(gpuOverviewCard);
-        });
-        if (noGpuMsg) noGpuMsg.style.display = hasValidGpu ? 'none' : 'block';
-        if (!hasValidGpu && noGpuMsg) noGpuMsg.textContent = "No valid GPU data to display.";
-    } else {
-        let gpuErrorText = "No GPUs detected.";
-        if (hostData.gpus && hostData.gpus.length > 0 && (hostData.gpus[0].error || hostData.gpus[0].message)) {
-            gpuErrorText = hostData.gpus[0].error || hostData.gpus[0].message;
         }
-        if (noGpuMsg) {
-            noGpuMsg.textContent = gpuErrorText;
-            noGpuMsg.style.display = 'block';
+
+        // GPUs
+        const gpuContainer = card.querySelector('.gpus-container');
+        gpuContainer.innerHTML = '';
+
+        if (data.gpus && !data.error) {
+            data.gpus.forEach(gpu => {
+                if (gpu.error) {
+                    gpuContainer.innerHTML += `<div class="gpu-card"><p class="error-text">${gpu.error}</p></div>`;
+                    return;
+                }
+
+                const processRows = (gpu.processes || []).map(p => `
+                    <tr>
+                        <td>${p.pid}</td>
+                        <td>${p.username}</td>
+                        <td>${p.gpu_memory_used_mib?.toFixed(0)} MiB</td>
+                        <td>${p.cpu_percent?.toFixed(1)}%</td>
+                        <td class="command" title="${p.command}">${p.command?.substring(0, 40)}...</td>
+                    </tr>
+                `).join('');
+
+                const el = document.createElement('div');
+                el.className = 'gpu-card';
+                el.innerHTML = `
+                    <h4>
+                        ${this._cleanGpuName(gpu.name)} (ID: ${gpu.id})
+                        <span style="font-size:0.8em; font-weight:400; color:var(--text-secondary)">
+                            ${gpu.temperature_celsius}°C | Fan: ${gpu.fan_speed_percent}% | Power: ${gpu.power_usage_watts}/${gpu.power_limit_watts}W
+                        </span>
+                    </h4>
+                    <div class="metrics-grid" style="grid-template-columns: 1fr 1fr; gap:0.5rem; margin-bottom:1rem;">
+                         <div class="gpu-metric-row">
+                            <span class="gpu-metric-label">Util: ${gpu.utilization_gpu_percent}%</span>
+                            <div class="progress-bar-container"><div class="progress-bar" style="width:${gpu.utilization_gpu_percent}%"></div></div>
+                        </div>
+                        <div class="gpu-metric-row">
+                            <span class="gpu-metric-label">Mem: ${gpu.memory_used_mib?.toFixed(0)} / ${gpu.memory_total_mib?.toFixed(0)} MiB</span>
+                            <div class="progress-bar-container"><div class="progress-bar" style="width:${gpu.memory_percent}%"></div></div>
+                        </div>
+                    </div>
+                    <table class="processes-table">
+                        <thead><tr><th>PID</th><th>User</th><th>Mem</th><th>CPU</th><th>Command</th></tr></thead>
+                        <tbody>${processRows || '<tr><td colspan="5">No processes</td></tr>'}</tbody>
+                    </table>
+                `;
+                gpuContainer.appendChild(el);
+            });
         }
-        if (statusDot && statusDot.className === 'status-dot ok') statusDot.className = 'status-dot warning';
-    }
-}
 
-// Helper to clean GPU names
-function cleanGpuName(name) {
-    if (!name || typeof name !== 'string') return name;
-    // Remove NVIDIA, Nvidia, GeForce, RTX, Generation (case-insensitive, word boundaries)
-    return name.replace(/\b(NVIDIA|Nvidia|GeForce|RTX|Generation)\b/gi, '').replace(/\s+/g, ' ').trim();
-}
-
-function setNodeText(parent, selector, text) {
-    const el = parent.querySelector(selector);
-    if (el) el.textContent = text;
-}
-
-function updateProgressBar(parent, selector, percentage, viewType = 'detailed', showText = true) {
-    const bar = parent.querySelector(selector);
-    if (!bar) {
-        return;
-    }
-
-    const baseClass = viewType === 'overview' ? 'overview-progress-bar' : 'progress-bar';
-    bar.classList.add(baseClass);
-    bar.classList.remove(baseClass === 'overview-progress-bar' ? 'progress-bar' : 'overview-progress-bar');
-    bar.classList.remove('high-usage', 'critical-usage', 'overload');
-
-    const hasValue = typeof percentage === 'number' && Number.isFinite(percentage);
-    const actualPercent = hasValue ? percentage : 0;
-    const clampedPercent = Math.max(0, Math.min(actualPercent, 100));
-    bar.style.width = `${hasValue ? clampedPercent : 0}%`;
-
-    if (showText) {
-        if (hasValue) {
-            const decimals = viewType === 'overview' ? 0 : 1;
-            bar.textContent = `${actualPercent.toFixed(decimals)}%`;
-        } else {
-            bar.textContent = 'N/A';
+        // Disks
+        const diskContainer = card.querySelector('.disk-container');
+        diskContainer.innerHTML = '';
+        if (system.disks) {
+            system.disks.forEach(disk => {
+                const dEl = document.createElement('div');
+                dEl.className = 'metric-item';
+                dEl.innerHTML = `
+                    <strong>${disk.label}</strong>
+                    <small>${disk.used_gb} / ${disk.total_gb} GB</small>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar ${this._getUsageClass(disk.percent_used)}" style="width:${disk.percent_used}%"></div>
+                    </div>
+                `;
+                diskContainer.appendChild(dEl);
+            });
         }
-    } else {
-        bar.textContent = '';
+
+        // Timestamp
+        const ts = card.querySelector('.timestamp');
+        if (ts) ts.textContent = `Last data: ${data.fetch_time_utc ? new Date(data.fetch_time_utc).toLocaleTimeString() : 'Error'}`;
     }
 
-    if (!hasValue) {
-        return;
-    }
 
-    if (actualPercent > 100) {
-        bar.classList.add('overload');
-    } else if (clampedPercent > 85) {
-        bar.classList.add('critical-usage');
-    } else if (clampedPercent > 65) {
-        bar.classList.add('high-usage');
-    }
-}
+    // --- Helpers ---
 
-function isFiniteNumber(value) {
-    return typeof value === 'number' && Number.isFinite(value);
-}
+    _updateMetric(card, valSelector, barSelector, value, unit = '', isError = false) {
+        const valEl = card.querySelector(valSelector);
+        const barEl = card.querySelector(barSelector);
 
-function applyLoadMetrics(parent, system, viewType = 'detailed', fallbackLabel = 'N/A') {
-    const load1 = isFiniteNumber(system.load_average_1m) ? system.load_average_1m : null;
-    const load5 = isFiniteNumber(system.load_average_5m) ? system.load_average_5m : null;
-    const load15 = isFiniteNumber(system.load_average_15m) ? system.load_average_15m : null;
-    const loadMax = isFiniteNumber(system.load_max) && system.load_max > 0 ? system.load_max : null;
-
-    setNodeText(parent, '.load-val-1', load1 !== null ? load1.toFixed(2) : fallbackLabel);
-    setNodeText(parent, '.load-val-5', load5 !== null ? load5.toFixed(2) : fallbackLabel);
-    setNodeText(parent, '.load-val-15', load15 !== null ? load15.toFixed(2) : fallbackLabel);
-    setNodeText(parent, '.load-max-value', loadMax !== null ? loadMax.toString() : fallbackLabel);
-
-    const loadContainer = parent.querySelector('.load-average-values');
-    if (loadContainer) {
-        const summary = [
-            `1m: ${load1 !== null ? load1.toFixed(2) : fallbackLabel}`,
-            `5m: ${load5 !== null ? load5.toFixed(2) : fallbackLabel}`,
-            `15m: ${load15 !== null ? load15.toFixed(2) : fallbackLabel}`,
-            `Max: ${loadMax !== null ? loadMax : fallbackLabel}`
-        ].join(' | ');
-        loadContainer.setAttribute('title', summary);
-    }
-
-    const showText = viewType !== 'overview';
-    const loadRatio = (load1 !== null && loadMax !== null) ? (load1 / loadMax) * 100 : null;
-    updateProgressBar(parent, '.load-progress', loadRatio, viewType, showText);
-
-    if (loadRatio === null) {
-        const bar = parent.querySelector('.load-progress');
-        if (bar) {
-            bar.textContent = showText ? fallbackLabel : '';
-        }
-    }
-
-    return loadRatio;
-}
-
-function formatGigabytes(value) {
-    if (!isFiniteNumber(value)) {
-        return 'N/A';
-    }
-    return `${value.toFixed(2)} GB`;
-}
-
-function applyDiskMetrics(parent, disks, viewType = 'detailed', fallbackLabel = 'N/A') {
-    const listSelector = viewType === 'overview' ? '.overview-disk-list' : '.detailed-disk-list';
-    const container = parent.querySelector(listSelector);
-
-    if (!container) {
-        return { maxPercent: null };
-    }
-
-    container.innerHTML = '';
-
-    const addEmptyState = (text) => {
-        const emptyEl = document.createElement('p');
-        emptyEl.className = 'no-disk-data';
-        emptyEl.textContent = text;
-        container.appendChild(emptyEl);
-    };
-
-    if (!Array.isArray(disks) || disks.length === 0) {
-        addEmptyState('No disk data.');
-        return { maxPercent: null };
-    }
-
-    let maxPercent = null;
-
-    disks.forEach(disk => {
-        const item = document.createElement('div');
-        item.className = `disk-item ${viewType}-disk-item`;
-
-        const labelText = disk.label || disk.path || 'Unknown';
-
-        if (disk.error) {
-            item.classList.add('disk-item-error');
-
-            const header = document.createElement('div');
-            header.className = 'disk-item-header';
-
-            const labelEl = document.createElement('span');
-            labelEl.className = 'disk-label';
-            labelEl.textContent = labelText;
-            header.appendChild(labelEl);
-
-            item.appendChild(header);
-
-            const errorEl = document.createElement('div');
-            errorEl.className = 'disk-error';
-            errorEl.textContent = disk.error;
-            item.appendChild(errorEl);
-
-            container.appendChild(item);
+        if (isError || value == null) {
+            if (valEl) valEl.textContent = 'ERR';
+            if (barEl) barEl.style.width = '0%';
             return;
         }
 
-        const percentValue = isFiniteNumber(disk.percent_used) ? disk.percent_used : null;
-        const percentDecimals = viewType === 'overview' ? 0 : 1;
-        const percentText = percentValue !== null ? `${percentValue.toFixed(percentDecimals)}%` : fallbackLabel;
+        if (valEl) valEl.textContent = `${typeof value === 'number' ? value.toFixed(1) : value}${unit}`;
 
-        const header = document.createElement('div');
-        header.className = 'disk-item-header';
-
-        const labelEl = document.createElement('span');
-        labelEl.className = 'disk-label';
-        labelEl.textContent = labelText;
-        labelEl.title = disk.path || labelText;
-        header.appendChild(labelEl);
-
-        const percentEl = document.createElement('span');
-        percentEl.className = 'disk-percent';
-        percentEl.textContent = percentText;
-        header.appendChild(percentEl);
-
-        item.appendChild(header);
-
-        const progressContainer = document.createElement('div');
-        progressContainer.className = viewType === 'overview' ? 'overview-progress-bar-container' : 'progress-bar-container';
-
-        const progressBar = document.createElement('div');
-        progressBar.className = `${viewType === 'overview' ? 'overview-progress-bar' : 'progress-bar'} disk-progress`;
-        progressContainer.appendChild(progressBar);
-        item.appendChild(progressContainer);
-
-        const usageDetails = document.createElement('div');
-        usageDetails.className = 'disk-usage-details';
-        const usedText = formatGigabytes(disk.used_gb);
-        const totalText = formatGigabytes(disk.total_gb);
-        usageDetails.textContent = `${usedText} / ${totalText}`;
-        if (isFiniteNumber(disk.free_gb)) {
-            usageDetails.textContent += ` (Free: ${formatGigabytes(disk.free_gb)})`;
-        }
-        item.appendChild(usageDetails);
-
-        if (disk.path) {
-            item.setAttribute('data-disk-path', disk.path);
-        }
-        if (percentValue !== null) {
-            item.setAttribute('data-disk-percent', percentValue.toFixed(2));
-        }
-
-        container.appendChild(item);
-
-        updateProgressBar(item, '.disk-progress', percentValue, viewType, viewType !== 'overview');
-
-        if (percentValue !== null) {
-            if (maxPercent === null) {
-                maxPercent = percentValue;
-            } else {
-                maxPercent = Math.max(maxPercent, percentValue);
-            }
-
-            if (percentValue > 95) {
-                item.classList.add('disk-item-critical');
-            } else if (percentValue > 80) {
-                item.classList.add('disk-item-warning');
+        if (barEl) {
+            const pct = Math.min(100, Math.max(0, parseFloat(value) || 0));
+            barEl.style.width = `${pct}%`;
+            barEl.className = barEl.className.replace(/high-usage|critical-usage/g, '').trim();
+            const usageClass = this._getUsageClass(pct);
+            if (usageClass) {
+                barEl.classList.add(usageClass);
             }
         }
-    });
-
-    if (!container.children.length) {
-        addEmptyState('No disk data.');
-        return { maxPercent: null };
     }
 
-    return { maxPercent };
+    _getUsageClass(pct) {
+        if (pct > 90) return 'critical-usage';
+        if (pct > 70) return 'high-usage';
+        return '';
+    }
+
+    _sanitizeId(name) {
+        return name.replace(/[^a-zA-Z0-9]/g, '-');
+    }
+
+    _extractHostname(url) {
+        try {
+            return new URL(url).hostname;
+        } catch {
+            return 'N/A';
+        }
+    }
+
+    _cleanGpuName(name) {
+        if (!name) return 'Unknown GPU';
+        return name.replace(/\b(NVIDIA|Nvidia|GeForce|RTX|Generation)\b/gi, '').replace(/\s+/g, ' ').trim();
+    }
+
+    _getGPUUsers(gpu) {
+        if (!gpu || !gpu.processes || !gpu.processes.length) return [];
+        const users = [];
+        const seen = new Set();
+
+        gpu.processes.forEach(p => {
+            if (p.username && p.username !== 'N/A') {
+                // Create a unique key for username to avoid duplicates
+                const key = p.username;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    users.push({
+                        username: p.username,
+                        commands: [p.command]
+                    });
+                } else {
+                    // Add command to existing user entry if different?
+                    const existing = users.find(u => u.username === p.username);
+                    if (existing && !existing.commands.includes(p.command)) {
+                        existing.commands.push(p.command);
+                    }
+                }
+            }
+        });
+        return users;
+    }
+
+    showError(msg) {
+        this.els.container.innerHTML = `<p style="color:var(--error-color); text-align:center; padding:2rem;">${msg}</p>`;
+    }
+
+    showToast(msg) {
+        console.log(`Toast: ${msg}`);
+    }
 }
 
-const faviconLink = document.createElement('link');
-faviconLink.rel = 'icon';
-faviconLink.href = '/static/favicon.ico';
-document.head.appendChild(faviconLink);
+// Global instance
+const app = new DashboardApp();
+
+// Exposed entry point for HTML
+window.initializeDashboard = (hosts, view) => app.init(hosts, view);

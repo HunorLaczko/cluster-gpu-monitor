@@ -1,0 +1,617 @@
+/* Classic Theme (Light Mode) - Refactored */
+:root {
+    /* Colors */
+    --c-primary: #007bff;
+    --c-primary-dark: #0056b3;
+    --c-info: #17a2b8;
+
+    --c-success: #28a745;
+    --c-warning: #ffc107;
+    --c-danger: #dc3545;
+
+    --c-bg-body: #f0f2f5;
+    --c-bg-card: #ffffff;
+    --c-bg-metric: #f8f9fa;
+    --c-bg-disk: #f9fafc;
+    --c-bg-header: #007bff;
+    --c-bg-footer: #343a40;
+
+    --c-text-main: #333333;
+    --c-text-secondary: #555555;
+    --c-text-tertiary: #666666;
+    --c-text-light: #ffffff;
+    --c-text-footer: #f8f9fa;
+
+    --c-border: #dddddd;
+    --c-border-light: #eeeeee;
+    --c-border-metric: #e9ecef;
+
+    /* Fonts */
+    --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "Roboto Mono", "Source Code Pro", monospace;
+}
+
+body {
+    font-family: var(--font-main);
+    margin: 0;
+    background-color: var(--c-bg-body);
+    color: var(--c-text-main);
+    line-height: 1.6;
+}
+
+/* Header */
+header {
+    background-color: var(--c-bg-header);
+    color: var(--c-text-light);
+    padding: 1rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+}
+
+.status-bar {
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+.status-bar a,
+.status-bar button {
+    color: var(--c-warning);
+    text-decoration: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.85rem;
+}
+
+.status-bar button:hover,
+.status-bar a:hover {
+    text-decoration: underline;
+}
+
+.status-bar a.active-view {
+    background-color: var(--c-warning);
+    color: var(--c-text-main);
+    font-weight: bold;
+    padding: 2px 5px;
+    border-radius: 3px;
+}
+
+/* Layout */
+main {
+    padding: 1.5rem;
+}
+
+.detailed-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    justify-content: center;
+}
+
+.overview-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+/* Host API Card (Common Base) */
+.host-card,
+.overview-host-card {
+    background-color: var(--c-bg-card);
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+}
+
+.overview-host-card {
+    border-radius: 6px;
+    padding: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+    font-size: 0.9em;
+}
+
+.host-card:hover,
+.overview-host-card:hover {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+
+
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+
+.host-card h2,
+.overview-host-card h2 {
+    color: var(--c-primary-dark);
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--c-border-light);
+    padding-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.overview-host-card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.3rem;
+}
+
+.host-card h2 {
+    font-size: 1.4rem;
+}
+
+
+.host-card h2 .hostname-link,
+.overview-host-card h2 .hostname-link {
+    font-size: 0.7em;
+    color: var(--c-text-secondary);
+    text-decoration: none;
+}
+
+.overview-host-card h2 .hostname-link {
+    font-size: 0.8em;
+    color: var(--c-text-tertiary);
+}
+
+.host-card h2 .hostname-link:hover,
+.overview-host-card h2 .hostname-link:hover {
+    text-decoration: underline;
+}
+
+/* Error Messages */
+.host-card .error-message,
+.overview-host-card .error-message {
+    color: var(--c-danger);
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 0.75rem;
+    border-radius: 4px;
+    /* Overview 3px */
+    margin-bottom: 1rem;
+    /* Overview 0.5rem */
+}
+
+.overview-host-card .error-message {
+    padding: 0.5rem;
+    border-radius: 3px;
+    margin-bottom: 0.5rem;
+    font-size: 0.85em;
+}
+
+/* Metrics Grid */
+.metrics-grid,
+.overview-metrics-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.metrics-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    margin-bottom: 1rem;
+}
+
+.overview-metrics-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.metric-item,
+.overview-metric-item {
+    background-color: var(--c-bg-metric);
+    padding: 0.75rem;
+    border-radius: 4px;
+    border: 1px solid var(--c-border-metric);
+}
+
+.overview-metric-item {
+    padding: 0.5rem;
+    border-radius: 3px;
+}
+
+.metric-item strong,
+.overview-metric-item strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--c-text-secondary);
+}
+
+.overview-metric-item strong {
+    font-size: 0.9em;
+    margin-bottom: 0.1rem;
+}
+
+.overview-metric-item .metric-value {
+    font-size: 1em;
+    font-weight: bold;
+}
+
+/* Progress Bars */
+.progress-bar-container,
+.overview-progress-bar-container {
+    width: 100%;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 0.25rem;
+    height: 20px;
+}
+
+.overview-progress-bar-container {
+    border-radius: 3px;
+    margin-top: 0.2rem;
+    height: 12px;
+}
+
+.progress-bar,
+.overview-progress-bar {
+    height: 100%;
+    background-color: var(--c-success);
+    text-align: center;
+    line-height: 20px;
+    color: var(--c-text-light);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transition: width 0.5s ease-in-out;
+}
+
+.overview-progress-bar {
+    line-height: 12px;
+    font-size: 0.7rem;
+    transition: width 0.3s ease-in-out;
+}
+
+.progress-bar.high-usage,
+.overview-progress-bar.high-usage {
+    background-color: var(--c-warning);
+}
+
+.progress-bar.critical-usage,
+.overview-progress-bar.critical-usage {
+    background-color: var(--c-danger);
+}
+
+.progress-bar.overload,
+.overview-progress-bar.overload {
+    background: repeating-linear-gradient(45deg, rgba(220, 53, 69, 0.95) 0, rgba(220, 53, 69, 0.95) 10px, rgba(255, 193, 7, 0.95) 10px, rgba(255, 193, 7, 0.95) 20px);
+}
+
+/* GPU Cards */
+.gpu-card,
+.overview-gpu-card {
+    border: 1px solid #e0e0e0;
+    /* overview uses #e9ecef.. using var(--c-border-metric) maybe? keeping strict. */
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: #fdfdfd;
+}
+
+.overview-gpu-card {
+    border-color: var(--c-border-metric);
+    border-radius: 4px;
+    padding: 0.6rem 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.gpu-card h4,
+.overview-gpu-card h4 {
+    margin-top: 0;
+    color: var(--c-info);
+    font-size: 1.2rem;
+    margin-bottom: 0.75rem;
+}
+
+.overview-gpu-card h4 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* GPU Metrics Rows */
+.gpu-metric-row,
+.overview-gpu-metric-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+
+.gpu-metric-label,
+.overview-gpu-metric-row .gpu-metric-label {
+    min-width: 40px;
+    font-size: 1em;
+    color: #444;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.overview-gpu-metric-row .gpu-metric-label {
+    min-width: 35px;
+    font-size: 0.9em;
+}
+
+.gpu-metric-row .progress-bar-container,
+.overview-gpu-metric-row .overview-progress-bar-container {
+    flex-grow: 1;
+    margin: 0;
+    height: 18px;
+}
+
+.overview-gpu-metric-row .overview-progress-bar-container {
+    height: 10px;
+}
+
+.gpu-metric-row .progress-bar,
+.overview-gpu-metric-row .overview-progress-bar {
+    height: 18px;
+    line-height: 18px;
+    font-size: 0.75em;
+}
+
+.overview-gpu-metric-row .overview-progress-bar {
+    height: 10px;
+    line-height: 10px;
+    font-size: 0.65em;
+}
+
+.gpu-metric-value,
+.overview-gpu-metric-row .gpu-metric-value {
+    min-width: 50px;
+    text-align: right;
+    font-size: 1em;
+    color: var(--c-text-main);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.overview-gpu-metric-row .gpu-metric-value {
+    min-width: 35px;
+    font-size: 0.9em;
+}
+
+/* Processes / Users */
+.processes-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+    font-size: 0.85em;
+}
+
+.processes-table th,
+.processes-table td {
+    text-align: left;
+    padding: 0.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.processes-table th {
+    background-color: #e9ecef;
+    font-weight: 600;
+}
+
+.overview-gpu-processes {
+    font-size: 0.85em;
+    color: var(--c-text-secondary);
+    margin-top: 0.6rem;
+    line-height: 1.4;
+}
+
+.overview-gpu-processes strong {
+    color: var(--c-text-main);
+    margin-right: 4px;
+    font-weight: 600;
+    vertical-align: top;
+}
+
+.overview-gpu-processes ul.overview-user-list {
+    list-style-type: none;
+    padding-left: 0;
+    margin: 0;
+    display: inline;
+}
+
+.overview-gpu-processes li.overview-user-tag {
+    display: inline-block;
+    background-color: var(--c-border-metric);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    color: var(--c-text-main);
+    margin-right: 4px;
+    margin-bottom: 3px;
+    line-height: 1.2;
+}
+
+.overview-gpu-processes li.overview-user-tag i {
+    color: #777;
+}
+
+.overview-gpu-processes li.overview-user-tag.multi-user-warning {
+    border: 2px solid var(--c-danger);
+    box-shadow: 0 0 4px rgba(220, 53, 69, 0.3);
+}
+
+/* Disks & Load */
+.metric-item.load-metric,
+.overview-metric-item.load-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    /* overview 0.25rem */
+}
+
+.overview-metric-item.load-metric {
+    gap: 0.25rem;
+    grid-column: 1 / -1;
+}
+
+.metric-item.disk-metric,
+.overview-metric-item.disk-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    /* overview 0.3rem */
+    grid-column: 1 / -1;
+}
+
+.overview-metric-item.disk-metric {
+    gap: 0.3rem;
+}
+
+.disk-usage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.disk-item {
+    background-color: var(--c-bg-disk);
+    border: 1px solid #e3e6ea;
+    border-radius: 4px;
+    padding: 0.6rem 0.7rem;
+    /* overview 0.5rem 0.6rem */
+}
+
+.overview-metric-item.disk-metric .disk-item {
+    font-size: 0.85em;
+    padding: 0.5rem 0.6rem;
+}
+
+.disk-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.disk-label {
+    font-weight: 600;
+    color: var(--c-text-main);
+    font-size: 0.95em;
+    /* overview 0.9em */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.overview-metric-item.disk-metric .disk-label {
+    font-size: 0.9em;
+}
+
+.disk-percent {
+    font-size: 0.9em;
+    color: var(--c-text-secondary);
+}
+
+.disk-usage-details {
+    font-size: 0.85em;
+    /* overview 0.8em */
+    color: var(--c-text-secondary);
+    margin-top: 0.35rem;
+}
+
+.overview-metric-item.disk-metric .disk-usage-details {
+    font-size: 0.8em;
+}
+
+/* Misc */
+.section-title {
+    font-size: 1.1rem;
+    color: var(--c-text-main);
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.load-average-values {
+    font-size: 0.95em;
+    /* overview 0.9em */
+    font-family: var(--font-mono);
+    color: var(--c-text-main);
+}
+
+.overview-metric-item.load-metric .load-average-values {
+    font-size: 0.9em;
+}
+
+.load-average-values span {
+    display: inline-block;
+    min-width: 3.4ch;
+}
+
+.load-max-text {
+    font-size: 0.8rem;
+    /* overview 0.75em */
+    color: var(--c-text-tertiary);
+}
+
+.overview-metric-item.load-metric .load-max-text {
+    font-size: 0.75em;
+}
+
+/* Footer & Status */
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    background-color: var(--c-bg-footer);
+    color: var(--c-text-footer);
+    margin-top: 2rem;
+}
+
+#loadingMessage {
+    width: 100%;
+    text-align: center;
+    font-size: 1.2rem;
+    color: var(--c-text-secondary);
+    padding: 2rem;
+}
+
+.timestamp {
+    font-size: 0.8em;
+    color: #777;
+    text-align: right;
+}
+
+.host-card .timestamp {
+    margin-top: 10px;
+}
+
+.overview-host-card .timestamp {
+    font-size: 0.75em;
+    margin-top: auto;
+    padding-top: 0.5rem;
+}
+
+.status-dot {
+    height: 10px;
+    width: 10px;
+    background-color: #bbb;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 5px;
+    vertical-align: middle;
+}
+
+.status-dot.ok {
+    background-color: var(--c-success);
+}
+
+.status-dot.error {
+    background-color: var(--c-danger);
+}
+
+.status-dot.warning {
+    background-color: var(--c-warning);
+}

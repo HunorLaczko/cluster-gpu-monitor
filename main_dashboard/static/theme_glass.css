@@ -22,7 +22,7 @@ body {
     font-family: var(--font-sans);
     margin: 0;
     background-color: var(--bg-color);
-    background-image: 
+    background-image:
         radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
         radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
     background-attachment: fixed;
@@ -50,6 +50,7 @@ header h1 {
     font-weight: 700;
     background: linear-gradient(to right, #60a5fa, #a78bfa);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.02em;
 }
@@ -68,7 +69,8 @@ header h1 {
     gap: 1rem;
 }
 
-.status-bar a, .status-bar button {
+.status-bar a,
+.status-bar button {
     color: var(--text-secondary);
     text-decoration: none;
     background: transparent;
@@ -81,7 +83,8 @@ header h1 {
     font-family: var(--font-sans);
 }
 
-.status-bar a:hover, .status-bar button:hover {
+.status-bar a:hover,
+.status-bar button:hover {
     background-color: rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
     border-color: rgba(255, 255, 255, 0.2);
@@ -96,9 +99,9 @@ header h1 {
 
 /* Main Layout */
 main {
-    padding: 2rem;
-    max-width: 1600px;
-    margin: 0 auto;
+    padding: 1.5rem;
+    width: 100%;
+    margin: 0;
 }
 
 .detailed-container {
@@ -109,7 +112,8 @@ main {
 }
 
 /* Cards */
-.host-card, .overview-host-card {
+.host-card,
+.overview-host-card {
     background-color: var(--card-bg);
     border: 1px solid var(--card-border);
     border-radius: 12px;
@@ -119,7 +123,8 @@ main {
     overflow: hidden;
 }
 
-.host-card:hover, .overview-host-card:hover {
+.host-card:hover,
+.overview-host-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
     border-color: rgba(148, 163, 184, 0.3);
@@ -133,9 +138,10 @@ main {
 }
 
 /* Card Header */
-.host-card h2, .overview-host-card h2 {
+.host-card h2,
+.overview-host-card h2 {
     margin: 0 0 1rem 0;
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--text-primary);
     display: flex;
@@ -167,9 +173,21 @@ main {
     margin-left: 0.5rem;
     box-shadow: 0 0 8px currentColor;
 }
-.status-dot.ok { background-color: var(--success-color); color: var(--success-color); }
-.status-dot.warning { background-color: var(--warning-color); color: var(--warning-color); }
-.status-dot.error { background-color: var(--error-color); color: var(--error-color); }
+
+.status-dot.ok {
+    background-color: var(--success-color);
+    color: var(--success-color);
+}
+
+.status-dot.warning {
+    background-color: var(--warning-color);
+    color: var(--warning-color);
+}
+
+.status-dot.error {
+    background-color: var(--error-color);
+    color: var(--error-color);
+}
 
 /* Metrics Section */
 .section-title {
@@ -208,12 +226,14 @@ main {
 }
 
 /* Progress Bars */
-.progress-bar-container, .overview-progress-bar-container {
+.progress-bar-container,
+.overview-progress-bar-container {
     width: 100%;
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 4px;
     overflow: hidden;
-    height: 6px; /* Sleek thin bars */
+    height: 6px;
+    /* Sleek thin bars */
     margin-top: 0.5rem;
 }
 
@@ -222,7 +242,8 @@ main {
     height: 8px;
 }
 
-.progress-bar, .overview-progress-bar {
+.progress-bar,
+.overview-progress-bar {
     height: 100%;
     background: var(--success-color);
     border-radius: 4px;
@@ -230,18 +251,44 @@ main {
     box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
 }
 
-.progress-bar.high-usage, .overview-progress-bar.high-usage {
+.progress-bar.high-usage,
+.overview-progress-bar.high-usage {
     background: var(--warning-color);
     box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
 }
 
-.progress-bar.critical-usage, .overview-progress-bar.critical-usage {
+.progress-bar.critical-usage,
+.overview-progress-bar.critical-usage {
     background: var(--error-color);
     box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
 }
 
+.progress-bar.overload,
+.overview-progress-bar.overload {
+    background: repeating-linear-gradient(45deg,
+            rgba(239, 68, 68, 0.9) 0,
+            rgba(239, 68, 68, 0.9) 10px,
+            rgba(245, 158, 11, 0.9) 10px,
+            rgba(245, 158, 11, 0.9) 20px);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
+    }
+}
+
 /* GPU Cards */
-.gpu-card, .overview-gpu-card {
+.gpu-card,
+.overview-gpu-card {
     background-color: rgba(0, 0, 0, 0.2);
     border: 1px solid var(--card-border);
     border-radius: 8px;
@@ -249,7 +296,8 @@ main {
     margin-bottom: 1rem;
 }
 
-.gpu-card h4, .overview-gpu-card h4 {
+.gpu-card h4,
+.overview-gpu-card h4 {
     margin: 0 0 0.75rem 0;
     color: var(--text-primary);
     font-size: 1rem;
@@ -294,24 +342,25 @@ main {
 /* Overview Layout */
 .overview-container {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
 }
 
 .overview-host-card {
-    padding: 1rem;
+    padding: 0.75rem;
+    font-size: 0.9em;
 }
 
 .overview-metrics-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
 }
 
 .overview-metric-item {
     background-color: rgba(255, 255, 255, 0.03);
-    padding: 0.75rem;
+    padding: 0.5rem;
     border-radius: 6px;
     border: 1px solid var(--card-border);
 }
@@ -323,6 +372,43 @@ main {
     border-radius: 4px;
     font-size: 0.75rem;
     margin-right: 4px;
+    list-style: none;
+    display: inline-block;
+}
+
+.overview-user-tag.multi-user-warning {
+    border: 2px solid var(--error-color);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+.overview-user-list {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    display: inline;
+}
+
+/* Explicitly target both disk and load metrics for full width */
+.overview-metric-item.disk-metric,
+.overview-metric-item.load-metric {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.overview-metric-item.disk-metric .disk-item,
+.overview-metric-item.load-metric .load-item {
+    padding: 0.5rem;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.overview-metric-item.disk-metric .disk-item-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
 }
 
 /* Inputs */
@@ -361,17 +447,24 @@ footer {
 }
 
 /* Scrollbar */
+.overview-disk-list {
+    margin-bottom: 1rem;
+}
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
+
 ::-webkit-scrollbar-track {
     background: var(--bg-color);
 }
+
 ::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.3);
     border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(148, 163, 184, 0.5);
 }
