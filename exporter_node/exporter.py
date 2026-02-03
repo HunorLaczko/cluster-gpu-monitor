@@ -6,11 +6,15 @@ import platform
 import os
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Constants
+CPU_MEASUREMENT_INTERVAL_SECONDS = 0.0  # Non-blocking
 
 app = FastAPI(
     title="System & GPU Metrics Exporter",
@@ -21,14 +25,17 @@ app = FastAPI(
 def get_disk_metrics() -> List[Dict[str, Any]]:
     """Collects disk usage for critical paths and /data-local mounts."""
     disk_entries: List[Dict[str, Any]] = []
-    targets: List[Dict[str, str]] = []
+    targets: Dict[str, str] = {}  # path -> label mapping
 
-    targets.append({"path": "/", "label": "Root (/)"})
+    # Root is always tracked
+    targets["/"] = "Root (/)"
 
+    # Docker path if it exists
     docker_path = "/var/lib/docker"
     if os.path.exists(docker_path):
-        targets.append({"path": docker_path, "label": "Docker (/var/lib/docker)"})
+        targets[docker_path] = "Docker (/var/lib/docker)"
 
+    # Collect /data-local mount points
     data_local_root = "/data-local"
     data_local_candidates = set()
 
@@ -38,7 +45,7 @@ def get_disk_metrics() -> List[Dict[str, Any]]:
             if mount.startswith(data_local_root):
                 data_local_candidates.add(mount)
     except Exception as e:
-        logger.warning(f"Error enumerating disk partitions: {e}", exc_info=True)
+        logger.warning("Error enumerating disk partitions: %s", e, exc_info=True)
 
     if os.path.exists(data_local_root):
         try:
@@ -47,20 +54,17 @@ def get_disk_metrics() -> List[Dict[str, Any]]:
                 if os.path.isdir(candidate_path):
                     data_local_candidates.add(os.path.realpath(candidate_path).rstrip("/"))
         except Exception as e:
-            logger.warning(f"Error listing directories under {data_local_root}: {e}", exc_info=True)
+            logger.warning("Error listing directories under %s: %s", data_local_root, e, exc_info=True)
 
+    # Add data-local paths to targets
     for mount in sorted(data_local_candidates):
+        normalized = mount.rstrip("/") or "/"
         display_name = os.path.basename(mount) or mount
-        targets.append({"path": mount, "label": f"Data ({mount})" if mount.startswith(data_local_root) else display_name})
+        label = f"Data ({mount})" if mount.startswith(data_local_root) else display_name
+        targets[normalized] = label
 
-    seen_paths = set()
-    for target in targets:
-        path = target["path"].rstrip("/") or "/"
-        label = target["label"]
-        if path in seen_paths:
-            continue
-        seen_paths.add(path)
-
+    # Process all unique targets
+    for path, label in targets.items():
         if not os.path.exists(path):
             disk_entries.append({
                 "path": path,
@@ -84,14 +88,14 @@ def get_disk_metrics() -> List[Dict[str, Any]]:
                 "free_gb": free_gb,
                 "percent_used": percent_used
             })
-        except PermissionError:
+        except (PermissionError, OSError) as e:
             disk_entries.append({
                 "path": path,
                 "label": label,
-                "error": "Permission denied"
+                "error": f"Access denied: {type(e).__name__}"
             })
         except Exception as e:
-            logger.warning(f"Error retrieving disk usage for {path}: {e}", exc_info=True)
+            logger.warning("Error retrieving disk usage for %s: %s", path, e, exc_info=True)
             disk_entries.append({
                 "path": path,
                 "label": label,
@@ -103,7 +107,7 @@ def get_disk_metrics() -> List[Dict[str, Any]]:
 def get_system_metrics() -> Dict[str, Any]:
     """Gathers CPU and System Memory metrics."""
     try:
-        cpu_percent = psutil.cpu_percent(interval=0.5)
+        cpu_percent = psutil.cpu_percent(interval=CPU_MEASUREMENT_INTERVAL_SECONDS)
         virtual_mem = psutil.virtual_memory()
         load_avg_1 = load_avg_5 = load_avg_15 = None
         try:
@@ -145,36 +149,39 @@ def get_gpu_metrics() -> List[Dict[str, Any]]:
         if not devices:
             return [{"message": "No NVIDIA GPUs found or nvitop could not access them."}]
 
-        for i, gpu_device in enumerate(devices):
+        for gpu_device in devices:
             processes_info = []
             try:
                 # Get the dictionary of GpuProcess objects
-                gpu_process_map = gpu_device.processes() 
+                gpu_process_map = gpu_device.processes()
                 
                 if gpu_process_map:
                     # Convert GpuProcess objects to Snapshot objects for consistent data access
-                    # GpuProcess.take_snapshots() is a class method that takes an iterable of GpuProcess
-                    process_snapshots = nvitop.GpuProcess.take_snapshots(gpu_process_map.values(), failsafe=True)
+                    process_snapshots = nvitop.GpuProcess.take_snapshots(
+                        gpu_process_map.values(), failsafe=True
+                    )
 
                     for p_snapshot in process_snapshots:
-                        # p_snapshot is now a nvitop.Snapshot object for a GpuProcess
                         processes_info.append({
                             "pid": p_snapshot.pid,
                             "username": p_snapshot.username if p_snapshot.username is not None else 'N/A',
                             "command": p_snapshot.command if p_snapshot.command is not None else 'N/A',
-                            # gpu_memory_human is already in MiB with "MiB" suffix in snapshot, 
-                            # we need raw MiB value. Snapshot stores gpu_memory in bytes.
-                            "gpu_memory_used_mib": round(p_snapshot.gpu_memory / (1024**2), 2) if p_snapshot.gpu_memory not in (None, nvitop.NA) else 0,
-                            "cpu_percent": p_snapshot.cpu_percent if p_snapshot.cpu_percent not in (None, nvitop.NA) else 0.0,
+                            "gpu_memory_used_mib": round(p_snapshot.gpu_memory / (1024**2), 2) 
+                                if p_snapshot.gpu_memory not in (None, nvitop.NA) else 0,
+                            "cpu_percent": p_snapshot.cpu_percent 
+                                if p_snapshot.cpu_percent not in (None, nvitop.NA) else 0.0,
                         })
                 else:
-                    logger.info(f"No processes reported by nvitop for GPU {gpu_device.index}")
+                    logger.info("No processes reported by nvitop for GPU %s", gpu_device.index)
 
             except Exception as proc_e:
-                log_msg = f"Error retrieving or processing GPU processes for GPU {gpu_device.index}: {proc_e}"
-                logger.warning(log_msg, exc_info=True)
+                logger.warning(
+                    "Error retrieving or processing GPU processes for GPU %s: %s",
+                    gpu_device.index, proc_e, exc_info=True
+                )
                 processes_info.append({"error": f"Could not retrieve processes: {str(proc_e)}"})
             
+            # Get GPU metrics - each call is a separate NVML query
             power_usage_mw = gpu_device.power_usage()
             power_limit_mw = gpu_device.power_limit()
 
@@ -192,7 +199,8 @@ def get_gpu_metrics() -> List[Dict[str, Any]]:
                 "utilization_gpu_percent": utilization_gpu,
                 "memory_total_mib": round(gpu_device.memory_total() / (1024**2), 2),
                 "memory_used_mib": round(gpu_device.memory_used() / (1024**2), 2),
-                "memory_percent": (gpu_device.memory_used() / gpu_device.memory_total()) * 100 if gpu_device.memory_total() > 0 else 0,
+                "memory_percent": (gpu_device.memory_used() / gpu_device.memory_total()) * 100 
+                    if gpu_device.memory_total() > 0 else 0,
                 "temperature_celsius": gpu_device.temperature(),
                 "power_usage_watts": power_usage_watts,
                 "power_limit_watts": power_limit_watts,
@@ -200,26 +208,42 @@ def get_gpu_metrics() -> List[Dict[str, Any]]:
                 "processes": processes_info,
             })
     except nvitop.NVMLError as e:
-        logger.error(f"NVML Error (NVIDIA drivers/libs issue?): {e}", exc_info=True)
+        logger.error("NVML Error (NVIDIA drivers/libs issue?): %s", e, exc_info=True)
         return [{"error": f"NVIDIA driver/library issue: {str(e)}"}]
     except Exception as e:
-        logger.error(f"Error getting GPU metrics: {e}", exc_info=True)
+        logger.error("Error getting GPU metrics: %s", e, exc_info=True)
         return [{"error": f"Could not retrieve GPU metrics: {str(e)}"}]
     return gpu_data_list
 
+# Global cache tracking
+_metrics_cache = None
+_cache_timestamp = 0
+CACHE_TTL_SECONDS = 2.0
+
 @app.get("/metrics", response_model=Optional[Dict[str, Any]])
 async def read_metrics():
+    global _metrics_cache, _cache_timestamp
+    
+    now = time.time()
+    if _metrics_cache and (now - _cache_timestamp) < CACHE_TTL_SECONDS:
+        logger.debug("Serving cached metrics")
+        return _metrics_cache
+
     try:
         hostname = platform.node()
         system_info = get_system_metrics()
         gpu_info = get_gpu_metrics()
 
-        return {
+        result = {
             "hostname": hostname,
-            "timestamp_utc": datetime.utcnow().isoformat(),
+            "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "system": system_info,
             "gpus": gpu_info,
         }
+        
+        _metrics_cache = result
+        _cache_timestamp = now
+        return result
     except Exception as e:
         logger.error(f"Critical error in /metrics endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

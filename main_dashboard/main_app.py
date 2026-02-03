@@ -80,7 +80,7 @@ class HostMetricsCache:
         self._last_error: Optional[str] = None
         self._refresh_interval = max(1.0, refresh_interval)
         self._base_stale_after = max(self._refresh_interval, stale_after)
-        self.stale_after = self._base_stale_after
+        self.stale_after: float = self._base_stale_after
 
     # --- Thread management -------------------------------------------------
     def start(self) -> None:
@@ -120,8 +120,8 @@ class HostMetricsCache:
             logger.info("Triggering synchronous cache refresh (force=%s)", force_refresh)
             self._refresh_once()
 
-        snapshot = self.snapshot()
-        return snapshot["data"], snapshot
+        snapshot_metadata = self.snapshot()
+        return snapshot_metadata["data"], snapshot_metadata
 
     # --- Internal helpers --------------------------------------------------
     @property
@@ -142,10 +142,12 @@ class HostMetricsCache:
     def _is_stale(self) -> bool:
         with self._lock:
             last_refresh = self._last_refresh
+            stale_after = self.stale_after
+        
         if last_refresh is None:
             return True
         age = (utc_now() - last_refresh).total_seconds()
-        return age >= self.stale_after
+        return age >= stale_after
 
     def _run_loop(self) -> None:
         loop = asyncio.new_event_loop()
@@ -188,7 +190,8 @@ class HostMetricsCache:
     def _update_cache(self, data: List[Dict[str, Any]]) -> None:
         now = utc_now()
         with self._lock:
-            self._data = copy.deepcopy(data)
+            # Store data as-is, deep copy only happens in snapshot() for safety
+            self._data = data
             self._last_refresh = now
             self._last_error = None
 
@@ -294,12 +297,12 @@ async def fetch_single_host_data(client: httpx.AsyncClient, host_config: dict) -
         "name": name,
         "url": url,
         "hostname": name,
-        "timestamp_utc": datetime.utcnow().isoformat(),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "system": {"error": "Not fetched"},
         "gpus": [{"error": "Not fetched"}],
         "error": None,
         "status_code": None,
-        "fetch_time_utc": datetime.utcnow().isoformat()
+        "fetch_time_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     }
     try:
         response = await client.get(url, timeout=10.0)
@@ -436,4 +439,4 @@ def reload_config_api():
     return jsonify({"message": f"Configuration reloaded. Monitoring {len(MONITORED_HOSTS)} hosts.", "hosts_count": len(MONITORED_HOSTS)})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)

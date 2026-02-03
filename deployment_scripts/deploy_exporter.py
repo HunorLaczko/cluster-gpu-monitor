@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 from fabric import Connection, Config
 from fabric.transfer import Transfer
 from getpass import getpass
@@ -52,10 +53,13 @@ def deploy_to_host(host_details):
         remote_group = host_details.get("group") or remote_user
         exporter_port = str(host_details.get("exporter_port", 8000)) # Get port from config, default 8000
 
-        # 1. Create deployment directory (remains the same)
+        # 1. Create deployment directory
         logger.info(f"Creating deployment directory: {deploy_path}")
-        c.sudo(f"mkdir -p {deploy_path}", warn=True)
-        c.sudo(f"chown {remote_user}:{remote_group} {deploy_path}", warn=True)
+        quoted_deploy_path = shlex.quote(deploy_path)
+        quoted_user = shlex.quote(remote_user)
+        quoted_group = shlex.quote(remote_group)
+        c.sudo(f"mkdir -p {quoted_deploy_path}", warn=True)
+        c.sudo(f"chown {quoted_user}:{quoted_group} {quoted_deploy_path}", warn=True)
 
         # 2. Upload exporter files
         logger.info("Uploading exporter files...")
@@ -96,12 +100,12 @@ def deploy_to_host(host_details):
         c.sudo("apt-get update -qq", hide=True, warn=True)
         c.sudo(f"apt-get install -y -qq {python_executable} {python_executable}-venv git", hide=True, warn=True)
 
-        c.run(f"{python_executable} -m venv {deploy_path}/venv")
+        c.run(f"{python_executable} -m venv {quoted_deploy_path}/venv")
         pip_executable = f"{deploy_path}/venv/bin/pip"
-        requirements_file_remote = f"{deploy_path}/requirements.txt" # Ensure this uses deploy_path
-        c.run(f"{pip_executable} install --upgrade pip", hide=True)
-        c.run(f"{pip_executable} install -r {requirements_file_remote}", hide=True)
-        c.sudo(f"chown -R {remote_user}:{remote_group} {deploy_path}", warn=True)
+        requirements_file_remote = f"{deploy_path}/requirements.txt"
+        c.run(f"{shlex.quote(pip_executable)} install --upgrade pip", hide=True)
+        c.run(f"{shlex.quote(pip_executable)} install -r {shlex.quote(requirements_file_remote)}", hide=True)
+        c.sudo(f"chown -R {quoted_user}:{quoted_group} {quoted_deploy_path}", warn=True)
 
 
         # 4. Setup systemd service (remains largely the same)

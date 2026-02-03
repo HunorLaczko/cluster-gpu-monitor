@@ -9,7 +9,11 @@ class DashboardApp {
             refreshIntervalMs: 15000,
             autoRefresh: true,
             minFetchGapMs: 1000,
-            viewType: 'overview' // 'overview' or 'detailed'
+            viewType: 'overview',
+            usageThresholds: {
+                critical: 90,
+                high: 70
+            }
         };
 
         this.state = {
@@ -29,6 +33,18 @@ class DashboardApp {
             themeSelect: document.getElementById('themeSelect'),
             themeLink: document.getElementById('theme-stylesheet')
         };
+    }
+
+    /**
+     * Escapes HTML special characters to prevent XSS attacks.
+     * @param {string} str - The string to escape.
+     * @returns {string} The escaped string safe for HTML insertion.
+     */
+    _escapeHtml(str) {
+        if (str == null) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
     }
 
     /**
@@ -283,11 +299,14 @@ class DashboardApp {
         div.id = `host-${this._sanitizeId(host.name)}`;
 
         const hostname = this._extractHostname(host.api_url);
+        const escapedName = this._escapeHtml(host.name);
+        const escapedHostname = this._escapeHtml(hostname);
+        const escapedUrl = this._escapeHtml(host.api_url || '#');
 
         div.innerHTML = `
             <h2>
-                <span>${host.name} <span class="status-dot"></span></span>
-                <a href="${host.api_url || '#'}" target="_blank" class="hostname-link">${hostname}</a>
+                <span>${escapedName} <span class="status-dot"></span></span>
+                <a href="${escapedUrl}" target="_blank" class="hostname-link">${escapedHostname}</a>
             </h2>
             <div class="overview-metrics-grid">
                 <div class="overview-metric-item">
@@ -348,18 +367,19 @@ class DashboardApp {
                 const users = this._getGPUUsers(gpu);
                 const hasMultipleUsers = users.length > 1;
                 const userTags = users.map(u => {
-                    const cmdList = u.commands.join(', ');
+                    const escapedUsername = this._escapeHtml(u.username);
+                    const escapedCmdList = this._escapeHtml(u.commands.join(', '));
                     const warningClass = hasMultipleUsers ? ' multi-user-warning' : '';
-                    return `<li class="overview-user-tag${warningClass}" title="User: ${u.username}&#10;Process: ${cmdList}"><i class="user-icon">👤</i>${u.username}</li>`;
+                    return `<li class="overview-user-tag${warningClass}" title="User: ${escapedUsername}&#10;Process: ${escapedCmdList}"><i class="user-icon">👤</i>${escapedUsername}</li>`;
                 }).join('');
 
                 const usersHtml = userTags ? `<div class="overview-gpu-processes"><strong>Users:</strong> <ul class="overview-user-list">${userTags}</ul></div>` : '';
 
                 const el = document.createElement('div');
                 el.className = 'overview-gpu-card';
-                // Using gpu.name as requested
+                const escapedGpuName = this._escapeHtml(this._cleanGpuName(gpu.name));
                 el.innerHTML = `
-                    <h4>${this._cleanGpuName(gpu.name)} <small>(GPU ${gpu.id}, ${Math.ceil(gpu.memory_total_mib / 1024)}GB)</small></h4>
+                    <h4>${escapedGpuName} <small>(GPU ${gpu.id}, ${Math.ceil(gpu.memory_total_mib / 1024)}GB)</small></h4>
                     <div class="overview-gpu-metric-row" title="GPU Utilization: ${util}%">
                         <span class="gpu-metric-label">Util</span>
                         <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-util-bar" style="width:${util}%"></div></div>
@@ -387,7 +407,7 @@ class DashboardApp {
                 }
             });
         } else if (isError) {
-            gpuContainer.innerHTML = `<div class="error-message">${data.error || system.error}</div>`;
+            gpuContainer.innerHTML = `<div class="error-message">${this._escapeHtml(data.error || system.error)}</div>`;
         }
 
         // Update CPU Load Metrics
@@ -477,11 +497,14 @@ class DashboardApp {
         div.className = 'host-card';
         div.id = `host-${this._sanitizeId(host.name)}`;
         const hostname = this._extractHostname(host.api_url);
+        const escapedName = this._escapeHtml(host.name);
+        const escapedHostname = this._escapeHtml(hostname);
+        const escapedUrl = this._escapeHtml(host.api_url || '#');
 
         div.innerHTML = `
             <h2>
-                <span>${host.name} <span class="status-dot"></span></span>
-                <a href="${host.api_url || '#'}" target="_blank" class="hostname-link">${hostname}</a>
+                <span>${escapedName} <span class="status-dot"></span></span>
+                <a href="${escapedUrl}" target="_blank" class="hostname-link">${escapedHostname}</a>
             </h2>
             
             <div class="metrics-grid">
@@ -574,21 +597,26 @@ class DashboardApp {
                     return;
                 }
 
-                const processRows = (gpu.processes || []).map(p => `
+                const processRows = (gpu.processes || []).map(p => {
+                    const escapedUsername = this._escapeHtml(p.username);
+                    const escapedCommand = this._escapeHtml(p.command);
+                    const truncatedCmd = this._escapeHtml(p.command?.substring(0, 40));
+                    return `
                     <tr>
                         <td>${p.pid}</td>
-                        <td>${p.username}</td>
+                        <td>${escapedUsername}</td>
                         <td>${p.gpu_memory_used_mib?.toFixed(0)} MiB</td>
                         <td>${p.cpu_percent?.toFixed(1)}%</td>
-                        <td class="command" title="${p.command}">${p.command?.substring(0, 40)}...</td>
+                        <td class="command" title="${escapedCommand}">${truncatedCmd}...</td>
                     </tr>
-                `).join('');
+                `}).join('');
 
                 const el = document.createElement('div');
                 el.className = 'gpu-card';
+                const escapedGpuName = this._escapeHtml(this._cleanGpuName(gpu.name));
                 el.innerHTML = `
                     <h4>
-                        ${this._cleanGpuName(gpu.name)} (ID: ${gpu.id})
+                        ${escapedGpuName} (ID: ${gpu.id})
                         <span style="font-size:0.8em; font-weight:400; color:var(--text-secondary)">
                             ${gpu.temperature_celsius}°C | Fan: ${gpu.fan_speed_percent}% | Power: ${gpu.power_usage_watts}/${gpu.power_limit_watts}W
                         </span>
@@ -662,8 +690,8 @@ class DashboardApp {
     }
 
     _getUsageClass(pct) {
-        if (pct > 90) return 'critical-usage';
-        if (pct > 70) return 'high-usage';
+        if (pct > this.config.usageThresholds.critical) return 'critical-usage';
+        if (pct > this.config.usageThresholds.high) return 'high-usage';
         return '';
     }
 

@@ -120,6 +120,9 @@ def test_metrics_endpoint_returns_payload(exporter_client, sample_system_metrics
 
 
 def test_metrics_endpoint_handles_exception(monkeypatch):
+    # Reset cache to ensure we hit the logic that raises exception
+    exporter._metrics_cache = None
+    exporter._cache_timestamp = 0
     monkeypatch.setattr(exporter, "get_system_metrics", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
     client = TestClient(exporter.app)
     response = client.get("/metrics")

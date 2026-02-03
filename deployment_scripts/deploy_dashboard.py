@@ -122,7 +122,7 @@ def setup_dashboard_files(deploy_path, service_user):
 
     logger.info(f"Copied application files from {DASHBOARD_APP_SRC_DIR} to {deploy_path}")
 
-    run_command(f"chown -R {service_user}:{service_user} {deploy_path}", shell=True)
+    run_command(["chown", "-R", f"{service_user}:{service_user}", deploy_path])
     logger.info(f"Set ownership of {deploy_path} to {service_user}")
 
     start_script_path = os.path.join(deploy_path, "start_main_app.sh")
@@ -136,16 +136,14 @@ def setup_virtual_environment(deploy_path, service_user, python_executable="pyth
     logger.info(f"Setting up Python virtual environment at {venv_path} using {python_executable}")
 
     # Run venv creation as the service_user. The deploy_path is already owned by service_user.
-    # No need for sudo within the command string if the current effective UID is root.
-    # However, to ensure it's as if service_user ran it (e.g., for pip cache):
-    run_command(f"sudo -u {service_user} {python_executable} -m venv {venv_path}", shell=True)
+    run_command(["sudo", "-u", service_user, python_executable, "-m", "venv", venv_path])
 
     pip_executable = os.path.join(venv_path, "bin/pip")
     requirements_file = os.path.join(deploy_path, "requirements.txt")
 
     logger.info("Installing Python dependencies from requirements.txt...")
-    run_command(f"sudo -u {service_user} {pip_executable} install --upgrade pip", shell=True)
-    run_command(f"sudo -u {service_user} {pip_executable} install -r {requirements_file}", shell=True)
+    run_command(["sudo", "-u", service_user, pip_executable, "install", "--upgrade", "pip"])
+    run_command(["sudo", "-u", service_user, pip_executable, "install", "-r", requirements_file])
     logger.info("Python dependencies installed.")
 
 def setup_systemd_service(deploy_path, service_user):
