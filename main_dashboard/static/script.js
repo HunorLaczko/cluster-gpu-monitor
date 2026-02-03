@@ -54,8 +54,8 @@ function initializeDashboard(hostsConfig, viewType = 'overview') {
         console.error("Dashboard container not found!");
         return;
     }
-    dashboardContainer.innerHTML = ''; 
-    
+    dashboardContainer.innerHTML = '';
+
     const loadingMsgElement = document.createElement('p');
     loadingMsgElement.id = 'loadingMessage';
     loadingMsgElement.textContent = 'Loading data for configured hosts...';
@@ -79,18 +79,18 @@ function initializeDashboard(hostsConfig, viewType = 'overview') {
         updateLastUpdatedTimestamp(false);
         return;
     }
-    
+
     hostsConfig.forEach(host => {
         let hostCard;
         if (currentDashboardView === 'overview') {
             hostCard = createOverviewHostCardStructure(host);
-        } else { 
+        } else {
             hostCard = createDetailedHostCardStructure(host);
         }
         dashboardContainer.appendChild(hostCard);
     });
 
-    fetchAndUpdateAllData(); 
+    fetchAndUpdateAllData();
     startRefreshInterval(); // Use the new function to start/restart with current interval value
     setupEventListeners();
     updateRefreshStatusLabel();
@@ -121,7 +121,7 @@ function handleIntervalChange() {
     // currentRefreshIntervalMs is updated inside startRefreshInterval
     console.log(`Refresh interval input changed. New value: ${newIntervalMs / 1000} seconds.`);
     localStorage.setItem('dashboardRefreshIntervalSeconds', newIntervalMs / 1000);
-    startRefreshInterval(); 
+    startRefreshInterval();
     if (autoRefreshEnabled) {
         fetchAndUpdateAllData();
     }
@@ -150,7 +150,7 @@ async function handleReloadConfig() {
         const response = await fetch('/api/config/reload', { method: 'POST' });
         const result = await response.json();
         alert(result.message || "Configuration reload processed.");
-        
+
         const dataResponse = await fetch('/api/data?fresh=1');
         const payload = await dataResponse.json();
         const payloadMetadata = !Array.isArray(payload) ? (payload.metadata || {}) : {};
@@ -161,7 +161,7 @@ async function handleReloadConfig() {
             console.error("Reload config: /api/data reported an error.", payloadError);
             const dashboardContainer = document.getElementById('dashboardContainer');
             if (dashboardContainer) {
-                 dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Failed to load new host data after config reload: ${payloadError}</p>`;
+                dashboardContainer.innerHTML = `<p id="loadingMessage" style="color:red;">Failed to load new host data after config reload: ${payloadError}</p>`;
             }
             return;
         }
@@ -170,12 +170,12 @@ async function handleReloadConfig() {
             return;
         }
 
-        const newHostsConfig = newHostData.map(host => ({ name: host.name, api_url: host.url })); 
-        
-        const loadingMsg = document.getElementById('loadingMessage');
-        if(loadingMsg) loadingMsg.remove();
+        const newHostsConfig = newHostData.map(host => ({ name: host.name, api_url: host.url }));
 
-        initializeDashboard(newHostsConfig, currentDashboardView); 
+        const loadingMsg = document.getElementById('loadingMessage');
+        if (loadingMsg) loadingMsg.remove();
+
+        initializeDashboard(newHostsConfig, currentDashboardView);
         fetchAndUpdateAllData(true);
 
     } catch (error) {
@@ -246,7 +246,7 @@ function createOverviewHostCardStructure(hostConfig) {
         <h2>
             <span>${hostConfig.name} <span class="status-dot"></span></span>
             <a href="${hostConfig.api_url || '#'}" target="_blank" class="hostname-link" title="Open exporter API endpoint">
-                ${hostnameDisplay.substring(0,15) + (hostnameDisplay.length > 15 ? '...' : '')}
+                ${hostnameDisplay.substring(0, 15) + (hostnameDisplay.length > 15 ? '...' : '')}
             </a>
         </h2>
         <div class="error-message" style="display: none;"></div>
@@ -455,7 +455,7 @@ function updateDetailedHostCard(hostData) {
         card.querySelector('.gpus-container').innerHTML = '<p class="no-gpu-message" style="display: block;">Error fetching host data.</p>';
         return;
     }
-    
+
     errorMsgEl.style.display = 'none';
     if (statusDot) statusDot.className = 'status-dot ok';
 
@@ -485,13 +485,13 @@ function updateDetailedHostCard(hostData) {
     }
 
     const gpusContainer = card.querySelector('.gpus-container');
-    const noGpuMsg = gpusContainer.querySelector('.no-gpu-message') || document.createElement('p'); 
-    if (!gpusContainer.querySelector('.no-gpu-message')) { 
+    const noGpuMsg = gpusContainer.querySelector('.no-gpu-message') || document.createElement('p');
+    if (!gpusContainer.querySelector('.no-gpu-message')) {
         noGpuMsg.className = 'no-gpu-message';
         noGpuMsg.style.display = 'none';
         gpusContainer.appendChild(noGpuMsg);
     }
-    
+
     Array.from(gpusContainer.querySelectorAll('.gpu-card')).forEach(gc => gc.remove());
 
     if (hostData.gpus && Array.isArray(hostData.gpus) && hostData.gpus.length > 0) {
@@ -502,7 +502,7 @@ function updateDetailedHostCard(hostData) {
             }
             if (gpu.error || gpu.message) {
                 const gpuErrorCard = document.createElement('div');
-                gpuErrorCard.className = 'gpu-card'; 
+                gpuErrorCard.className = 'gpu-card';
                 gpuErrorCard.innerHTML = `<h4>GPU ${gpu.id || 'N/A'}</h4><p class="error-message" style="font-size:0.9em;">${gpu.error || gpu.message}</p>`;
                 gpusContainer.appendChild(gpuErrorCard);
                 if (statusDot && statusDot.className === 'status-dot ok') statusDot.className = 'status-dot warning';
@@ -511,14 +511,14 @@ function updateDetailedHostCard(hostData) {
             hasValidGpu = true;
 
             const gpuCard = document.createElement('div');
-            gpuCard.className = 'gpu-card'; 
+            gpuCard.className = 'gpu-card';
 
             // Calculate total GPU memory in GB (rounded up)
             let totalMemGB = null;
             if (typeof gpu.memory_total_mib === 'number') {
                 totalMemGB = Math.ceil(gpu.memory_total_mib / 1024);
             }
-            
+
             let processesTable = '<p>No process data.</p>';
             if (gpu.processes && Array.isArray(gpu.processes) && gpu.processes.length > 0 && !(gpu.processes[0] && gpu.processes[0].error_detail)) {
                 processesTable = `
@@ -531,13 +531,13 @@ function updateDetailedHostCard(hostData) {
                                     <td>${p.username || 'N/A'}</td>
                                     <td>${typeof p.gpu_memory_used_mib === 'number' ? p.gpu_memory_used_mib.toFixed(1) : 'N/A'}</td>
                                     <td>${typeof p.cpu_percent === 'number' ? p.cpu_percent.toFixed(1) : 'N/A'}%</td>
-                                    <td class="command" title="${p.command || ''}">${(p.command || 'N/A').substring(0,50)}${(p.command && p.command.length > 50) ? '...' : ''}</td>
+                                    <td class="command" title="${p.command || ''}">${(p.command || 'N/A').substring(0, 50)}${(p.command && p.command.length > 50) ? '...' : ''}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>`;
             } else if (gpu.processes && gpu.processes[0] && gpu.processes[0].error_detail) {
-                 processesTable = `<p class="error-message" style="font-size:0.9em;">Proc Error: ${gpu.processes[0].error_detail}</p>`;
+                processesTable = `<p class="error-message" style="font-size:0.9em;">Proc Error: ${gpu.processes[0].error_detail}</p>`;
             }
 
             gpuCard.innerHTML = `
@@ -611,7 +611,7 @@ function updateOverviewHostCard(hostData) {
     if (statusDot) statusDot.className = 'status-dot ok';
 
     const system = hostData.system || {};
-     if (system.error) {
+    if (system.error) {
         setNodeText(card, '.cpu-percent', 'Error');
         updateProgressBar(card, '.cpu-progress', 0, 'overview', false);
         setNodeText(card, '.memory-percent', 'Error');
@@ -635,7 +635,7 @@ function updateOverviewHostCard(hostData) {
 
     const gpusContainer = card.querySelector('.gpus-overview-container');
     const noGpuMsg = gpusContainer.querySelector('.no-gpu-message') || document.createElement('p');
-     if (!gpusContainer.querySelector('.no-gpu-message')) {
+    if (!gpusContainer.querySelector('.no-gpu-message')) {
         noGpuMsg.className = 'no-gpu-message';
         noGpuMsg.style.display = 'none';
         gpusContainer.appendChild(noGpuMsg);
@@ -646,7 +646,7 @@ function updateOverviewHostCard(hostData) {
         let hasValidGpu = false;
         hostData.gpus.forEach(gpu => {
             if (typeof gpu !== 'object' || gpu === null) {
-                 console.warn("Malformed GPU data for overview:", gpu); return;
+                console.warn("Malformed GPU data for overview:", gpu); return;
             }
             if (gpu.error || gpu.message) {
                 const gpuErrorDiv = document.createElement('div');
@@ -666,18 +666,43 @@ function updateOverviewHostCard(hostData) {
                 totalMemGB = Math.ceil(gpu.memory_total_mib / 1024);
             }
 
+            const processes = gpu.processes || [];
+            let userProcessMap = {};
+            let hasProcessData = false;
+
+            if (processes.length > 0 && !(processes[0] && processes[0].error_detail)) {
+                hasProcessData = true;
+                processes.forEach(p => {
+                    const user = p.username || 'N/A';
+                    if (!userProcessMap[user]) {
+                        userProcessMap[user] = [];
+                    }
+                    userProcessMap[user].push(p.command || 'N/A');
+                });
+            }
+
+            // Fallback to process_usernames if no detailed process data
             const usernames = gpu.process_usernames || [];
             let usernamesHtml = '';
-            if (usernames.length > 0 && usernames[0] !== "N/A" && usernames[0] !== "None") {
+
+            if (hasProcessData) {
+                const users = Object.keys(userProcessMap).sort();
+                usernamesHtml = users.map(u => {
+                    const commands = userProcessMap[u].join('\n');
+                    // Escape quotes for the title attribute just in case
+                    const safeCommands = commands.replace(/"/g, '&quot;');
+                    return `<li class="overview-user-tag" title="${safeCommands}">${u}</li>`;
+                }).join('');
+            } else if (usernames.length > 0 && usernames[0] !== "N/A" && usernames[0] !== "None") {
                 usernamesHtml = usernames.map(u => `<li class="overview-user-tag">${u}</li>`).join('');
             } else if (usernames.length > 0 && (usernames[0] === "N/A" || usernames[0] === "None")) {
                 usernamesHtml = `<li class="overview-user-tag"><i>${usernames[0]}</i></li>`;
-            } else { // Should ideally not happen if python sends ["None"] for empty
+            } else {
                 usernamesHtml = "<li class=\"overview-user-tag\"><i>None</i></li>";
             }
 
             gpuOverviewCard.innerHTML = `
-                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(cleanGpuName(gpu.name) || 'N/A').substring(0,15)}${(gpu.name && cleanGpuName(gpu.name).length > 15 ? "..." : "")}${totalMemGB !== null ? ` (${totalMemGB} GB)` : ''}</span></h4>
+                <h4>GPU ${gpu.id}: <span style="font-weight:normal; font-size:0.85em;">${(cleanGpuName(gpu.name) || 'N/A').substring(0, 15)}${(gpu.name && cleanGpuName(gpu.name).length > 15 ? "..." : "")}${totalMemGB !== null ? ` (${totalMemGB} GB)` : ''}</span></h4>
                 <div class="gpu-metric-row overview-gpu-metric-row">
                     <span class="gpu-metric-label">Util:</span>
                     <div class="overview-progress-bar-container"><div class="overview-progress-bar gpu-util-progress"></div></div>
@@ -936,5 +961,5 @@ function applyDiskMetrics(parent, disks, viewType = 'detailed', fallbackLabel = 
 
 const faviconLink = document.createElement('link');
 faviconLink.rel = 'icon';
-faviconLink.href = '/static/favicon.ico'; 
+faviconLink.href = '/static/favicon.ico';
 document.head.appendChild(faviconLink);
