@@ -354,6 +354,35 @@ async def fetch_all_hosts_data() -> list:
     return results
 
 
+async def fetch_users_list() -> List[Dict[str, Any]]:
+    """
+    Iterates through monitored hosts and queries the first available one for /users.
+    """
+    if not MONITORED_HOSTS:
+        return []
+    
+    async with httpx.AsyncClient() as client:
+        for host_conf in MONITORED_HOSTS:
+            url = host_conf.get("api_url")
+            try:
+                base_url = url.rsplit('/', 1)[0]
+                users_url = f"{base_url}/users"
+                
+                logger.info(f"Attempting to fetch users from {users_url}")
+                response = await client.get(users_url, timeout=5.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    users = data.get("users", [])
+                    if users:
+                        # Sort by username
+                        return sorted(users, key=lambda x: x.get("username", ""))
+            except Exception as e:
+                logger.warning(f"Failed to fetch users from {host_conf.get('name')}: {e}")
+                continue # Try next host
+    
+    return []
+
+
 def _resolve_client_identifier() -> str:
     forwarded_for = request.headers.get("X-Forwarded-For", "") if has_request_context() else ""
     client_address = forwarded_for.split(",")[0].strip() if forwarded_for else (request.remote_addr if has_request_context() else "")
@@ -434,6 +463,19 @@ def get_all_data_api():
     }
 
     return jsonify(response)
+
+
+@app.route('/debug')
+def debug_page():
+    """Renders the debug dashboard page."""
+    return _render_dashboard_view("debug")
+
+
+@app.route('/api/debug/users')
+async def get_debug_users():
+    """API endpoint to fetch users from the first available server."""
+    users = await fetch_users_list()
+    return jsonify({"users": users})
 
 @app.route('/api/config/reload', methods=['POST'])
 def reload_config_api():

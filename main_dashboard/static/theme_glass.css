@@ -710,6 +710,22 @@ footer {
     content: '▲';
 }
 
-.docker-table th[data-sort="desc"]::after {
-    content: '▼';
+
+/* Debug View Users */
+.debug-user-tag {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    padding: 10px 15px;
+    border-radius: 6px;
+    border: 1px solid var(--card-border);
+    font-size: 0.9em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.debug-user-tag .uid-gid {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
 }

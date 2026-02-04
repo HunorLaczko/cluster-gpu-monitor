@@ -4,6 +4,7 @@ import nvitop
 import psutil
 import platform
 import os
+import pwd
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
@@ -338,6 +339,24 @@ def get_gpu_metrics() -> List[Dict[str, Any]]:
         logger.error("Error getting GPU metrics: %s", e, exc_info=True)
         return [{"error": f"Could not retrieve GPU metrics: {str(e)}"}]
     return gpu_data_list
+
+
+@app.get("/users", response_model=Dict[str, List[Dict[str, Any]]])
+async def get_users():
+    """Returns a list of users (UID >= 1000 or root)."""
+    try:
+        users = []
+        for p in pwd.getpwall():
+            if p.pw_uid >= 1000 or p.pw_uid == 0:
+                users.append({
+                    "username": p.pw_name,
+                    "uid": p.pw_uid,
+                    "gid": p.pw_gid
+                })
+        return {"users": users}
+    except Exception as e:
+        logger.error(f"Error getting system users: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @app.get("/metrics", response_model=Optional[Dict[str, Any]])

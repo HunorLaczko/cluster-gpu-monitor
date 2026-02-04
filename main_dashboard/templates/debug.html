@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster Debug View</title>
+    <link id="theme-stylesheet" rel="stylesheet" href="{{ url_for('static', filename='theme_glass.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+
+<body>
+    <header>
+        <h1>Cluster Debug View</h1>
+        <div class="status-bar">
+            View: <a href="{{ url_for('overview_page') }}">Overview</a> |
+            <a href="{{ url_for('detailed_page') }}">Detailed</a> |
+            <a href="{{ url_for('docker_page') }}">Docker</a> |
+            <a href="#" class="active-view">Debug</a>
+            <span style="margin-left: 20px;">Last Updated: <span id="lastUpdated">Never</span></span>
+            <span style="margin-left: 10px;">
+                Theme: <select id="themeSelect" style="padding: 2px;">
+                    <option value="glass">Glass (Dark)</option>
+                    <option value="classic">Classic (Light)</option>
+                </select>
+            </span>
+        </div>
+    </header>
+
+    <main id="dashboardContainer" class="overview-container">
+        <div class="host-card" style="width: 100%; max-width: 800px; margin: 0 auto;">
+            <h2>System Users</h2>
+            <div id="usersListContainer" style="padding: 20px;">
+                <p>Loading users...</p>
+            </div>
+            <button id="refreshUsersBtn" style="margin-top: 20px; padding: 5px 10px;">Refresh Users</button>
+        </div>
+    </main>
+
+    <footer>
+        <p>Monitoring Dashboard - Debug Mode</p>
+    </footer>
+
+    <script id="initial-hosts-config" type="application/json">
+        {{ initial_hosts_config | tojson | safe }}
+    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Basic initialization for theme handling
+            const app = new DashboardApp();
+            app._loadSettings(); // Just load theme settings
+
+            // Custom logic for this view
+            const container = document.getElementById('usersListContainer');
+            const refreshBtn = document.getElementById('refreshUsersBtn');
+            const lastUpdated = document.getElementById('lastUpdated');
+
+            async function fetchUsers() {
+                container.innerHTML = '<p>Loading users...</p>';
+                try {
+                    const res = await fetch('/api/debug/users');
+                    const data = await res.json();
+
+                    console.log("Users data:", data); // Debug log
+
+                    if (data.users && data.users.length) {
+                        const ul = document.createElement('ul');
+                        ul.style.display = 'grid';
+                        ul.style.gridTemplateColumns = 'repeat(auto-fill, minmax(250px, 1fr))'; // Wider for details
+                        ul.style.gap = '10px';
+                        ul.style.listStyle = 'none';
+                        ul.style.padding = '0';
+
+                        data.users.forEach(user => {
+                            const li = document.createElement('li');
+                            li.className = 'debug-user-tag';
+
+                            const nameSpan = document.createElement('span');
+                            nameSpan.textContent = user.username;
+                            nameSpan.style.fontWeight = 'bold';
+
+                            const infoSpan = document.createElement('span');
+                            infoSpan.className = 'uid-gid';
+                            infoSpan.textContent = `UID: ${user.uid} | GID: ${user.gid}`;
+
+                            li.appendChild(nameSpan);
+                            li.appendChild(infoSpan);
+                            ul.appendChild(li);
+                        });
+                        container.innerHTML = '';
+                        container.appendChild(ul);
+                        lastUpdated.textContent = new Date().toLocaleTimeString();
+                    } else {
+                        container.innerHTML = '<p>No users found (or filtered) or error fetching.</p>';
+                    }
+
+                } catch (e) {
+                    console.error(e);
+                    container.innerHTML = `<p style="color:red">Error: ${e.message}</p>`;
+                }
+            }
+
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', fetchUsers);
+            }
+
+            // Initial fetch
+            fetchUsers();
+        });
+    </script>
+</body>
+
+</html>

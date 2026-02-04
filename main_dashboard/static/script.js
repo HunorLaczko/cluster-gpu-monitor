@@ -62,9 +62,38 @@ class DashboardApp {
         this._setupEventListeners();
         this._renderInitialStructure();
 
+        // Check for debug flag
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('debug') === 'true') {
+            this._enableDebugMode();
+        }
+
         // Start the loop
         this.startAutoRefresh();
         this.fetchData();
+    }
+
+    _enableDebugMode() {
+        // Add Debug link to status bar if not already present
+        const statusBar = document.querySelector('.status-bar');
+        if (statusBar && !statusBar.querySelector('a[href="/debug"]')) {
+            // Find the last link before the "Last Updated" span
+            const links = statusBar.querySelectorAll('a');
+            const lastLink = links[links.length - 1]; // Usually "Docker"
+
+            if (lastLink) {
+                const debugLink = document.createElement('a');
+                debugLink.href = "/debug";
+                debugLink.className = window.location.pathname === '/debug' ? 'active-view' : '';
+                debugLink.textContent = "Debug";
+                debugLink.style.marginLeft = "5px"; // spacing
+
+                // Insert separator and link
+                const separator = document.createTextNode(" | ");
+                lastLink.parentNode.insertBefore(separator, lastLink.nextSibling);
+                lastLink.parentNode.insertBefore(debugLink, separator.nextSibling);
+            }
+        }
     }
 
 

@@ -798,6 +798,25 @@ footer {
     font-weight: 500;
 }
 
+/* Debug View Users */
+.debug-user-tag {
+    background-color: var(--c-bg-metric);
+    color: var(--c-text-main);
+    padding: 10px 15px;
+    border-radius: 4px;
+    border: 1px solid var(--c-border-metric);
+    font-size: 0.9em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.debug-user-tag .uid-gid {
+    font-size: 0.85em;
+    color: var(--c-text-secondary);
+    font-family: var(--font-mono);
+}
+
 .status-text-error {
     color: var(--c-text-secondary);
     font-style: italic;
