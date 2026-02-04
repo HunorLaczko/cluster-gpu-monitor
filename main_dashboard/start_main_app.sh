@@ -24,7 +24,7 @@ HOST="0.0.0.0"
 PORT="5000" # Ensure this port is open
 WORKERS="1" # Use a single worker to keep the in-memory cache consistent across connections
 WORKER_CLASS="gthread" # Threaded workers handle concurrent requests without websocket dependencies
-THREADS="4"
+THREADS="64" # Increased to handle multiple SSE connections (1 per tab) + concurrent requests
 LOG_FILE="$APP_DIR/dashboard.log"
 
 echo "Starting Main Dashboard Application on $HOST:$PORT with $WORKERS workers at $(date)" # >> "$LOG_FILE" 2>&1

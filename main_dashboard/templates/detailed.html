@@ -52,6 +52,7 @@
     <script id="initial-hosts-config" type="application/json">
         {{ initial_hosts_config | tojson | safe }}
     </script>
+    <script src="{{ url_for('static', filename='notifications.js') }}"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
         const initialConfigEl = document.getElementById('initial-hosts-config');

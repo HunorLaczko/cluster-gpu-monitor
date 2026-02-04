@@ -261,12 +261,21 @@ class DashboardApp {
 
     async fetchData(force = false) {
         const now = Date.now();
+        const timeSinceLastFetch = this.state.lastFetchTime ? now - this.state.lastFetchTime : 'N/A';
+
         // Debounce
-        if (!force && now - this.state.lastFetchTime < this.config.minFetchGapMs) return;
-        if (this.state.fetchPromise) return this.state.fetchPromise;
+        if (!force && now - this.state.lastFetchTime < this.config.minFetchGapMs) {
+            console.debug(`fetchData debounced (${timeSinceLastFetch}ms since last fetch)`);
+            return;
+        }
+        if (this.state.fetchPromise) {
+            console.debug('fetchData: already fetching, skipping');
+            return this.state.fetchPromise;
+        }
 
         const intervalSec = (this.config.refreshIntervalMs / 1000).toFixed(0);
         const url = `/api/data?client_interval_seconds=${intervalSec}${force ? '&fresh=1' : ''}`;
+        console.debug(`fetchData called (force=${force}, interval=${intervalSec}s, time_since_last=${timeSinceLastFetch}ms)`);
 
         this.state.fetchPromise = (async () => {
             try {

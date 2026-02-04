@@ -6,18 +6,78 @@ import json
 import logging
 import math
 import os
+import queue # Added generic import
 import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, jsonify, render_template, request, has_request_context
+from flask import Flask, jsonify, render_template, request, has_request_context, Response, stream_with_context
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Initialize Notifications
+# Initialize Notifications
+from notifications import NotificationManager, AlertManager, disk_usage_check, root_process_check
+nm = NotificationManager()
+am = AlertManager()
+am.register_check(disk_usage_check)
+am.register_check(root_process_check)
+
 app = Flask(__name__)
+
+@app.route('/api/notifications/stream')
+def notification_stream():
+    """Server-Sent Events endpoint for real-time notifications."""
+    if not has_request_context():
+        return jsonify({"error": "No request context"}), 500
+
+    # Identify user
+    remote_user = request.headers.get("Remote-Name") or request.headers.get("Remote-User") or "anonymous"
+    
+    def generate():
+        q = nm.subscribe(remote_user)
+        try:
+            # Send initial ping or connection established message
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                try:
+                    # Blocking get with timeout to allow pings
+                    msg = q.get(timeout=15.0)
+                    yield f"event: notification\ndata: {json.dumps(msg)}\n\n"
+                except queue.Empty:
+                    # Send keep-alive comment
+                    yield ": keepalive\n\n"
+        except GeneratorExit:
+            nm.unsubscribe(remote_user, q)
+        except Exception as e:
+            logger.error(f"SSE Error for {remote_user}: {e}")
+            nm.unsubscribe(remote_user, q)
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+@app.route('/api/debug/notify', methods=['POST'])
+def debug_trigger_notification():
+    """Trigger a manual notification for debugging."""
+    data = request.json
+    if not data:
+        return jsonify({"error": "Invalid payload"}), 400
+        
+    target_user = data.get("user")
+    title = data.get("title", "Test Notification")
+    body = data.get("body", "This is a test message.")
+    level = data.get("level", "info")
+    
+    if target_user:
+        nm.send_to_user(target_user, title, body, level)
+        msg = f"Sent to {target_user}"
+    else:
+        nm.broadcast(title, body, level)
+        msg = "Broadcasted to all users"
+        
+    return jsonify({"message": msg})
 
 # --- Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +86,14 @@ MONITORED_HOSTS = []
 
 CACHE_REFRESH_SECONDS = float(os.getenv("CACHE_REFRESH_SECONDS", "10"))
 CACHE_STALE_AFTER_SECONDS = float(os.getenv("CACHE_STALE_AFTER_SECONDS", "30"))
+USERS_CACHE_TTL = float(os.getenv("USERS_CACHE_TTL_SECONDS", "1800")) # 30 minutes
+
+# --- Global State ---
+_users_cache = {
+    "data": [],
+    "expiry": 0
+}
+_users_cache_lock = threading.Lock()
 
 
 def _get_env_float(name: str, default: float) -> float:
@@ -157,6 +225,13 @@ class HostMetricsCache:
             self.refresh_interval,
             self.stale_after,
         )
+        
+        # Initialize AlertManager in this thread/process context if needed, 
+        # or just ensure checks are registered. 
+        # (Assuming they are registered globally on import/startup)
+        from notifications import AlertManager
+        am = AlertManager()
+        
         try:
             while not self._stop_event.is_set():
                 start_time = time.monotonic()
@@ -164,6 +239,10 @@ class HostMetricsCache:
                     with self._fetch_lock:
                         data = loop.run_until_complete(fetch_all_hosts_data())
                     self._update_cache(data)
+                    
+                    # Run alert checks
+                    loop.run_until_complete(am.process_data(data))
+                    
                 except Exception as exc:
                     logger.error("Background refresh failed: %s", exc, exc_info=True)
                     with self._lock:
@@ -171,6 +250,7 @@ class HostMetricsCache:
                 elapsed = time.monotonic() - start_time
                 interval = self.refresh_interval
                 wait_time = max(1.0, interval - elapsed)
+                logger.info(f"Background refresh completed in {elapsed:.2f}s, next refresh in {wait_time:.2f}s (interval={interval:.2f}s)")
                 if self._stop_event.wait(wait_time):
                     break
         finally:
@@ -182,6 +262,9 @@ class HostMetricsCache:
             with self._fetch_lock:
                 data = asyncio.run(fetch_all_hosts_data())
             self._update_cache(data)
+            # Run alerts synchronously-ish (asyncio.run) for the refresh_once case
+            from notifications import AlertManager
+            asyncio.run(AlertManager().process_data(data))
         except Exception as exc:
             logger.error("Synchronous cache refresh failed: %s", exc, exc_info=True)
             with self._lock:
@@ -213,7 +296,9 @@ class ClientIntervalTracker:
         if not client_id:
             client_id = "unknown"
         try:
-            interval = max(1.0, float(interval_seconds))
+            interval = max(5.0, float(interval_seconds))  # Enforce minimum 5-second interval
+            if float(interval_seconds) < 5.0:
+                logger.warning(f"Client {client_id} requested {interval_seconds}s interval, enforcing minimum 5s")
         except (TypeError, ValueError):
             return
 
@@ -241,7 +326,11 @@ class ClientIntervalTracker:
             self._prune_locked(now)
             if not self._clients:
                 return self._fallback_interval
-            return min(meta["interval"] for meta in self._clients.values())
+            intervals = {client_id: meta["interval"] for client_id, meta in self._clients.items()}
+            min_interval = min(intervals.values())
+            if min_interval <= 2.0:  # Log if suspiciously fast
+                logger.warning(f"Suspiciously fast client interval detected: {min_interval}s from clients: {intervals}")
+            return min_interval
 
     def active_clients(self) -> int:
         now = utc_now()
@@ -354,31 +443,54 @@ async def fetch_all_hosts_data() -> list:
     return results
 
 
+async def _fetch_users_from_host(client: httpx.AsyncClient, host_conf: dict) -> List[Dict[str, Any]]:
+    url = host_conf.get("api_url")
+    try:
+        base_url = url.rsplit('/', 1)[0]
+        users_url = f"{base_url}/users"
+        response = await client.get(users_url, timeout=3.0) # Slightly tighter timeout for users
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("users", [])
+    except Exception as e:
+        logger.debug(f"Failed to fetch users from {host_conf.get('name')}: {e}")
+    return []
+
 async def fetch_users_list() -> List[Dict[str, Any]]:
     """
-    Iterates through monitored hosts and queries the first available one for /users.
+    Queries all monitored hosts in parallel and returns users from the first successful response.
+    Includes caching for 30 minutes.
     """
+    global _users_cache
+    
+    # Check cache
+    with _users_cache_lock:
+        if time.time() < _users_cache["expiry"] and _users_cache["data"]:
+            logger.debug("Returning system users from cache")
+            return _users_cache["data"]
+
     if not MONITORED_HOSTS:
         return []
     
     async with httpx.AsyncClient() as client:
-        for host_conf in MONITORED_HOSTS:
-            url = host_conf.get("api_url")
-            try:
-                base_url = url.rsplit('/', 1)[0]
-                users_url = f"{base_url}/users"
-                
-                logger.info(f"Attempting to fetch users from {users_url}")
-                response = await client.get(users_url, timeout=5.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    users = data.get("users", [])
-                    if users:
-                        # Sort by username
-                        return sorted(users, key=lambda x: x.get("username", ""))
-            except Exception as e:
-                logger.warning(f"Failed to fetch users from {host_conf.get('name')}: {e}")
-                continue # Try next host
+        # Fetch from all hosts in parallel
+        tasks = [_fetch_users_from_host(client, host_conf) for host_conf in MONITORED_HOSTS]
+        results = await asyncio.gather(*tasks)
+        
+        # Take the first non-empty list of users
+        all_users = []
+        for users in results:
+            if users:
+                all_users = users
+                break
+        
+        if all_users:
+            sorted_users = sorted(all_users, key=lambda x: x.get("username", ""))
+            # Update cache
+            with _users_cache_lock:
+                _users_cache["data"] = sorted_users
+                _users_cache["expiry"] = time.time() + USERS_CACHE_TTL
+            return sorted_users
     
     return []
 
@@ -443,8 +555,10 @@ def get_all_data_api():
     if interval_param is None:
         interval_param = request.args.get("clientIntervalSeconds")
 
+    client_id = _resolve_client_identifier()
     if interval_param is not None:
-        client_interval_tracker.update(_resolve_client_identifier(), interval_param)
+        client_interval_tracker.update(client_id, interval_param)
+        logger.debug(f"Client {client_id} polling interval: {interval_param}s (force={force_flag})")
 
     effective_interval = client_interval_tracker.effective_interval()
     interval_changed = host_cache.set_refresh_interval(effective_interval)
