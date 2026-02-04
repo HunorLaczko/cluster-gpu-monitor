@@ -393,10 +393,18 @@ def _resolve_client_identifier() -> str:
 
 def _render_dashboard_view(view_name: str):
     template_name = f"{view_name}.html"
+    remote_user = None
+    if has_request_context():
+        # Authelia forwards 'Remote-Name' (display name) or 'Remote-User' (username)
+        remote_user = request.headers.get("Remote-Name")
+        if not remote_user:
+            remote_user = request.headers.get("Remote-User")
+
     return render_template(
         template_name,
         initial_hosts_config=MONITORED_HOSTS,
         current_view=view_name,
+        remote_user=remote_user,
     )
 
 

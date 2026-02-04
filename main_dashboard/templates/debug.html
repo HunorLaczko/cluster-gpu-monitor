@@ -24,6 +24,11 @@
                     <option value="classic">Classic (Light)</option>
                 </select>
             </span>
+            {% if remote_user %}
+            <span style="margin-left: 20px;">
+                User: <strong>{{ remote_user }}</strong>
+            </span>
+            {% endif %}
         </div>
     </header>
 
