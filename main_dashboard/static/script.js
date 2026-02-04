@@ -20,7 +20,9 @@ class DashboardApp {
             hosts: [],
             lastFetchTime: 0,
             fetchPromise: null,
-            timerId: null
+            fetchPromise: null,
+            timerId: null,
+            systemUsers: [] // Store fetched system users
         };
 
         this.els = {
@@ -62,6 +64,9 @@ class DashboardApp {
         this._setupEventListeners();
         this._renderInitialStructure();
 
+        // Fetch system users for validation
+        this.fetchSystemUsers();
+
         // Check for debug flag
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('debug') === 'true') {
@@ -93,6 +98,22 @@ class DashboardApp {
                 lastLink.parentNode.insertBefore(separator, lastLink.nextSibling);
                 lastLink.parentNode.insertBefore(debugLink, separator.nextSibling);
             }
+        }
+    }
+
+    async fetchSystemUsers() {
+        try {
+            const res = await fetch('/api/users');
+            const data = await res.json();
+            if (data.users && Array.isArray(data.users)) {
+                const EXCLUDED_USERS = ['root', 'test'];
+                this.state.systemUsers = data.users
+                    .map(u => u.username)
+                    .filter(u => !EXCLUDED_USERS.includes(u));
+                console.log('System users loaded for validation:', this.state.systemUsers.length);
+            }
+        } catch (err) {
+            console.error('Failed to fetch system users:', err);
         }
     }
 
@@ -960,12 +981,30 @@ class DashboardApp {
                     else if (s.includes('exit')) statusClass = 'status-text-error';
                     else if (s.includes('pause')) statusClass = 'status-text-warning';
 
+                    // Error Detection for Names
+                    let rowClass = "";
+                    let namesHtml = this._escapeHtml(c.Names);
+
+                    if (this.state.systemUsers.length > 0) {
+                        const names = c.Names || "";
+                        const namesStr = Array.isArray(names) ? names.join(',') : String(names);
+
+                        const validation = this._validateAndHighlight(namesStr);
+                        namesHtml = validation.html;
+
+                        if (validation.isError) {
+                            rowClass = "error-row";
+                        }
+                    } else {
+                        namesHtml = this._escapeHtml(c.Names);
+                    }
+
                     return `
-                    <tr>
+                    <tr class="${rowClass}">
                         <td title="${c.ID}">${c.ID.substring(0, 12)}</td>
                         <td title="${c.Image}">${c.Image.substring(0, 30)}</td>
                         <td class="${statusClass}" title="${c.Status}">${c.Status}</td>
-                        <td title="${c.Names}">${c.Names}</td>
+                        <td title="${c.Names}">${namesHtml}</td>
                         <td title="${c.Size}">${c.Size}</td>
                     </tr>
                 `}).join('');
@@ -978,14 +1017,47 @@ class DashboardApp {
             if (images.length === 0) {
                 imagesBody.innerHTML = '<tr><td colspan="4">No images found.</td></tr>';
             } else {
-                imagesBody.innerHTML = images.map(i => `
-                    <tr>
-                        <td title="${i.Repository}">${i.Repository}</td>
-                        <td title="${i.Tag}">${i.Tag}</td>
+                imagesBody.innerHTML = images.map(i => {
+                    // Error Detection for Images
+                    let rowClass = "";
+                    let repoHtml = this._escapeHtml(i.Repository);
+                    let tagHtml = this._escapeHtml(i.Tag);
+
+                    if (this.state.systemUsers.length > 0) {
+                        // Check Repository
+                        const repoVal = this._validateAndHighlight(i.Repository);
+                        // Check Tag
+                        const tagVal = this._validateAndHighlight(i.Tag);
+
+                        // If EITHER is valid (has user or ignore keyword), then the row is NOT an error.
+                        // But wait, the requirement is "if they don't contain any of the usernames... do a red outline".
+                        // So if Repository has user OR Tag has user, it's valid.
+                        // If NEITHER has user, it's error.
+                        // However, _validateAndHighlight returns isError=true if no match.
+
+                        const repoValid = !repoVal.isError;
+                        const tagValid = !tagVal.isError;
+
+                        repoHtml = repoVal.html;
+                        tagHtml = tagVal.html;
+
+                        // We highlight matches in individual columns.
+                        // The row is error only if BOTH are invalid (i.e. neither contained a user/ignore word).
+                        // Actually, usually the user is in the Repo OR the Tag. One match is sufficient to validate the image ownership.
+
+                        if (!repoValid && !tagValid) {
+                            rowClass = "error-row";
+                        }
+                    }
+
+                    return `
+                    <tr class="${rowClass}">
+                        <td title="${i.Repository}">${repoHtml}</td>
+                        <td title="${i.Tag}">${tagHtml}</td>
                         <td title="${i.ID}">${i.ID.substring(7, 19)}</td>
                         <td title="${i.Size}">${i.Size}</td>
                     </tr>
-                `).join('');
+                `}).join('');
             }
         }
 
@@ -1068,6 +1140,44 @@ class DashboardApp {
             }
         });
         return users;
+    }
+
+    _validateAndHighlight(text) {
+        if (!text) return { html: '', isError: true };
+
+        const IGNORED_KEYWORDS = ['netdata', 'portainer', 'docker-socket', 'grafana', 'prometheus'];
+
+        // Check ignore list
+        for (const keyword of IGNORED_KEYWORDS) {
+            if (text.includes(keyword)) {
+                return { html: this._escapeHtml(text), isError: false };
+            }
+        }
+
+        // Check system users
+        if (this.state.systemUsers && this.state.systemUsers.length > 0) {
+            for (const user of this.state.systemUsers) {
+                if (text.includes(user)) {
+                    const escapedText = this._escapeHtml(text);
+                    const escapedUser = this._escapeHtml(user);
+                    // Replace the first occurrence or all? Usually names are simple.
+                    // We need to be careful with HTML injection. 
+                    // Since we escaped the whole text, we can try to insert the span.
+                    // But simpler is to split by the user string.
+
+                    const parts = escapedText.split(escapedUser);
+                    // Join with the highlighted span
+                    const highlightedHtml = parts.join(`<span class="user-match">${escapedUser}</span>`);
+                    return { html: highlightedHtml, isError: false };
+                }
+            }
+            // If we have users but no match found
+            return { html: this._escapeHtml(text), isError: true };
+        }
+
+        // If user list is empty, default to no error (or whatever previous logic was)
+        // Previous logic: "if systemUsers is empty, skip error detection" -> isError = false
+        return { html: this._escapeHtml(text), isError: false };
     }
 
     showError(msg) {

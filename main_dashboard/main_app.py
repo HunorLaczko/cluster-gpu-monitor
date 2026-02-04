@@ -471,7 +471,7 @@ def debug_page():
     return _render_dashboard_view("debug")
 
 
-@app.route('/api/debug/users')
+@app.route('/api/users')
 async def get_debug_users():
     """API endpoint to fetch users from the first available server."""
     users = await fetch_users_list()

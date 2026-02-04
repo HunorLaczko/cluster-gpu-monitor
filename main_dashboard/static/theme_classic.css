@@ -878,3 +878,16 @@ footer {
 .docker-table th[data-sort="desc"]::after {
     content: '▼';
 }
+
+/* Docker Error Highlighting - Classic */
+.docker-table tr.error-row {
+    outline: 2px solid var(--c-danger);
+    outline-offset: -2px;
+    background-color: rgba(220, 53, 69, 0.05) !important;
+}
+
+.user-match {
+    color: #30ba37;
+    /* Dark Green - readable on light bg */
+    font-weight: bold;
+}

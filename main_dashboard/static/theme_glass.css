@@ -729,3 +729,16 @@ footer {
     color: var(--text-secondary);
     font-family: var(--font-mono);
 }
+
+/* Docker Error Highlighting - Glass */
+.docker-table tr.error-row {
+    outline: 2px solid var(--error-color);
+    outline-offset: -2px;
+}
+
+.user-match {
+    color: #00ff00;
+    /* Bright Green */
+    font-weight: bold;
+    text-shadow: 0 0 4px rgba(0, 255, 0, 0.4);
+}

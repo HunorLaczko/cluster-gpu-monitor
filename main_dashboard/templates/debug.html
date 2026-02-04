@@ -59,7 +59,7 @@
             async function fetchUsers() {
                 container.innerHTML = '<p>Loading users...</p>';
                 try {
-                    const res = await fetch('/api/debug/users');
+                    const res = await fetch('/api/users');
                     const data = await res.json();
 
                     console.log("Users data:", data); // Debug log
