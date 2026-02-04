@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cluster Detailed Monitor</title>
+    <title>Docker Statistics</title>
     <link id="theme-stylesheet" rel="stylesheet" href="{{ url_for('static', filename='theme_glass.css') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
 </head>
@@ -36,7 +36,7 @@
         </div>
     </header>
 
-    <main id="dashboardContainer" class="detailed-container">
+    <main id="dashboardContainer" class="docker-container">
         <p id="loadingMessage">Loading data for configured hosts...</p>
     </main>
 
@@ -60,7 +60,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            initializeDashboard(initialHostsConfig, 'detailed');
+            initializeDashboard(initialHostsConfig, 'docker');
         });
     </script>
 </body>

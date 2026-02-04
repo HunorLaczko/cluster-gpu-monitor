@@ -468,3 +468,248 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(148, 163, 184, 0.5);
 }
+
+/* =========================================
+   Docker View Specific Styles
+   ========================================= */
+
+.docker-container {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.docker-host-card {
+    flex: 1 1 600px;
+    /* Increased base width to encourage 2-column layout */
+    max-width: 900px !important;
+    min-width: 320px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Summary Grid */
+.docker-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.docker-summary-grid .metric-item {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 0.75rem;
+}
+
+.docker-summary-grid .metric-value {
+    font-size: 1.1rem;
+    margin-bottom: 0.2rem;
+}
+
+/* Details Section */
+.docker-details-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.docker-details-section details {
+    background-color: rgba(30, 41, 59, 0.4);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    overflow-x: auto;
+    /* Enable horizontal scrolling for tables */
+}
+
+.docker-details-section summary {
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.03);
+    font-weight: 600;
+    border-radius: 8px;
+    transition: background-color 0.2s;
+}
+
+.docker-details-section details[open] summary {
+    border-bottom: 1px solid var(--card-border);
+    border-radius: 8px 8px 0 0;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.docker-details-section summary:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* Tables */
+.docker-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    table-layout: fixed;
+    /* Better control over columns */
+}
+
+.docker-table th {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--card-border);
+}
+
+.docker-table td {
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--card-border);
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.docker-table tr:hover td {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Column Specifics */
+/* Containers Table */
+.containers-table th:nth-child(1),
+.containers-table td:nth-child(1) {
+    width: 100px;
+    font-family: var(--font-mono);
+    color: var(--accent-color);
+}
+
+/* ID */
+.containers-table th:nth-child(2),
+.containers-table td:nth-child(2) {
+    width: 180px;
+}
+
+/* Image */
+.containers-table th:nth-child(3),
+.containers-table td:nth-child(3) {
+    width: 100px;
+}
+
+/* Status */
+.containers-table th:nth-child(4),
+.containers-table td:nth-child(4) {
+    width: auto;
+    font-weight: 500;
+}
+
+/* Names */
+.containers-table th:nth-child(5),
+.containers-table td:nth-child(5) {
+    width: 80px;
+    text-align: right;
+}
+
+/* Size */
+
+/* Images Table */
+.images-table th:nth-child(1),
+.images-table td:nth-child(1) {
+    width: auto;
+    font-weight: 500;
+}
+
+/* Repository */
+.images-table th:nth-child(2),
+.images-table td:nth-child(2) {
+    width: 120px;
+}
+
+/* Tag */
+.images-table th:nth-child(3),
+.images-table td:nth-child(3) {
+    width: 100px;
+    font-family: var(--font-mono);
+    color: var(--accent-color);
+}
+
+/* ID */
+.images-table th:nth-child(4),
+.images-table td:nth-child(4) {
+    width: 80px;
+    text-align: right;
+}
+
+/* Size */
+
+/* Status Colors */
+.status-text-success {
+    color: var(--success-color);
+}
+
+.status-text-warning {
+    color: var(--warning-color);
+}
+
+.status-text-error {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* Badges */
+.containers-total-badge,
+.images-total-badge {
+    background: var(--accent-color);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+    border-radius: 12px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+}
+
+/* Resizable Columns */
+.docker-table th {
+    position: relative;
+    /* Required for absolute positioning of resizer */
+}
+
+.resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    cursor: col-resize;
+    user-select: none;
+    height: 100%;
+    z-index: 10;
+    transition: background-color 0.2s;
+}
+
+.resizer:hover,
+.resizing {
+    background-color: var(--accent-color);
+    opacity: 0.5;
+}
+
+/* Sortable Headers */
+.docker-table th {
+    cursor: pointer;
+    user-select: none;
+    /* Prevent text selection while clicking quickly */
+}
+
+.docker-table th::after {
+    content: '';
+    display: inline-block;
+    margin-left: 5px;
+    width: 10px;
+    text-align: center;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.docker-table th[data-sort="asc"]::after {
+    content: '▲';
+}
+
+.docker-table th[data-sort="desc"]::after {
+    content: '▼';
+}

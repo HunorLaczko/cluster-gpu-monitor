@@ -382,6 +382,11 @@ def detailed_page():
     """Renders the detailed dashboard page."""
     return _render_dashboard_view("detailed")
 
+@app.route('/docker')
+def docker_page():
+    """Renders the docker statistics dashboard page."""
+    return _render_dashboard_view("docker")
+
 @app.route('/api/data')
 def get_all_data_api():
     """API endpoint delivering cached metrics with optional on-demand refresh."""

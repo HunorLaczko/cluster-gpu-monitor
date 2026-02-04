@@ -16,7 +16,9 @@
             View: <a href="{{ url_for('overview_page') }}"
                 class="{{ 'active-view' if current_view == 'overview' else '' }}">Overview</a> |
             <a href="{{ url_for('detailed_page') }}"
-                class="{{ 'active-view' if current_view == 'detailed' else '' }}">Detailed</a>
+                class="{{ 'active-view' if current_view == 'detailed' else '' }}">Detailed</a> |
+            <a href="{{ url_for('docker_page') }}"
+                class="{{ 'active-view' if current_view == 'docker' else '' }}">Docker</a>
             <span style="margin-left: 20px;">Last Updated: <span id="lastUpdated">Never</span></span>
             <span style="margin-left: 10px;">Auto-Refresh: <span id="refreshStatus">ON</span>
                 (<a href="#" id="toggleRefresh">Toggle</a>)</span>

@@ -155,10 +155,15 @@ class DashboardApp {
         }
 
         this.state.hosts.forEach(host => {
-            const card = this.config.viewType === 'overview'
-                ? this._createOverviewCard(host)
-                : this._createDetailedCard(host);
-            this.els.container.appendChild(card);
+            let card;
+            if (this.config.viewType === 'overview') {
+                card = this._createOverviewCard(host);
+            } else if (this.config.viewType === 'detailed') {
+                card = this._createDetailedCard(host);
+            } else if (this.config.viewType === 'docker') {
+                card = this._createDockerCard(host);
+            }
+            if (card) this.els.container.appendChild(card);
         });
     }
 
@@ -261,8 +266,10 @@ class DashboardApp {
             try {
                 if (this.config.viewType === 'overview') {
                     this._updateOverviewCard(hostData);
-                } else {
+                } else if (this.config.viewType === 'detailed') {
                     this._updateDetailedCard(hostData);
+                } else if (this.config.viewType === 'docker') {
+                    this._updateDockerCard(hostData);
                 }
             } catch (e) {
                 console.error(`Error updating host ${hostData.name}:`, e);
@@ -656,6 +663,301 @@ class DashboardApp {
                 `;
                 diskContainer.appendChild(dEl);
             });
+        }
+
+        // Timestamp
+        const ts = card.querySelector('.timestamp');
+        if (ts) ts.textContent = `Last data: ${data.fetch_time_utc ? new Date(data.fetch_time_utc).toLocaleTimeString() : 'Error'}`;
+    }
+
+
+    // --- Docker View ---
+
+    _createDockerCard(host) {
+        const div = document.createElement('div');
+        div.className = 'host-card docker-host-card';
+        div.id = `host-${this._sanitizeId(host.name)}`;
+        const hostname = this._extractHostname(host.api_url);
+        const escapedName = this._escapeHtml(host.name);
+        const escapedHostname = this._escapeHtml(hostname);
+        const escapedUrl = this._escapeHtml(host.api_url || '#');
+
+        div.innerHTML = `
+            <h2>
+                <span>${escapedName} <span class="status-dot"></span></span>
+                <a href="${escapedUrl}" target="_blank" class="hostname-link">${escapedHostname}</a>
+            </h2>
+            
+            <div class="docker-summary-grid">
+                <div class="metric-item">
+                    <strong>Containers</strong>
+                    <div class="metric-value containers-count">--</div>
+                    <small style="color:var(--text-secondary)">Running / Total</small>
+                </div>
+                <div class="metric-item">
+                    <strong>Images</strong>
+                    <div class="metric-value images-count">--</div>
+                    <small style="color:var(--text-secondary)">Total Size: <span class="images-size">--</span></small>
+                </div>
+                <div class="metric-item">
+                    <strong>Build Cache</strong>
+                    <div class="metric-value build-cache-size">--</div>
+                </div>
+                <div class="metric-item">
+                    <strong>Local Volumes</strong>
+                    <div class="metric-value volumes-count">--</div>
+                    <small style="color:var(--text-secondary)">Total Size: <span class="volumes-size">--</span></small>
+                </div>
+            </div>
+
+            <div class="docker-details-section">
+                <details>
+                    <summary>Containers (<span class="containers-total-badge">0</span>)</summary>
+                    <table class="docker-table containers-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Image</th>
+                                <th>Status</th>
+                                <th>Names</th>
+                                <th>Size</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td colspan="5">Loading...</td></tr></tbody>
+                    </table>
+                </details>
+
+                <details>
+                    <summary>Images (<span class="images-total-badge">0</span>)</summary>
+                    <table class="docker-table images-table">
+                        <thead>
+                            <tr>
+                                <th>Repository</th>
+                                <th>Tag</th>
+                                <th>ID</th>
+                                <th>Size</th>
+                            </tr>
+                        </thead>
+                        <tbody><tr><td colspan="4">Loading...</td></tr></tbody>
+                    </table>
+                </details>
+            </div>
+
+            <div class="timestamp">Last data: --</div>
+        `;
+
+        // Initialize Resizable Columns after a short delay to ensure DOM insertion
+        setTimeout(() => {
+            this._initResizableTables(div);
+            this._initSortableTables(div);
+        }, 100);
+        return div;
+    }
+
+    _initSortableTables(container) {
+        const tables = container.querySelectorAll('.docker-table');
+        tables.forEach(table => {
+            const headers = table.querySelectorAll('th');
+            headers.forEach((th, index) => {
+                th.addEventListener('click', () => {
+                    // Toggle sort direction
+                    const currentSort = th.getAttribute('data-sort');
+                    const newSort = currentSort === 'asc' ? 'desc' : 'asc';
+
+                    // Reset others
+                    headers.forEach(h => h.removeAttribute('data-sort'));
+
+                    // Set new sort
+                    th.setAttribute('data-sort', newSort);
+
+                    this._sortTable(table, index, newSort === 'asc');
+                });
+            });
+        });
+    }
+
+    _sortTable(table, colIndex, asc) {
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+        // Don't sort if valid data isn't loaded (e.g. Loading... or empty)
+        if (rows.length === 0 || rows[0].cells.length <= 1) return;
+
+        const isSizeColumn = table.rows[0].cells[colIndex].textContent.trim().toLowerCase().includes('size');
+
+        rows.sort((rowA, rowB) => {
+            const cellA = rowA.cells[colIndex].innerText.trim();
+            const cellB = rowB.cells[colIndex].innerText.trim();
+
+            if (isSizeColumn) {
+                const sizeA = this._parseSize(cellA);
+                const sizeB = this._parseSize(cellB);
+                return asc ? sizeA - sizeB : sizeB - sizeA;
+            } else {
+                return asc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+            }
+        });
+
+        // Re-append rows in new order
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    _parseSize(sizeStr) {
+        if (!sizeStr || sizeStr === '--') return 0;
+        const units = { 'B': 1, 'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3, 'TB': 1024 ** 4 };
+        const match = sizeStr.match(/([\d.]+)\s*([A-Za-z]+)/);
+        if (match) {
+            const val = parseFloat(match[1]);
+            const unit = match[2].toUpperCase();
+            return val * (units[unit] || 1);
+        }
+        return 0;
+    }
+
+    _initResizableTables(container) {
+        const tables = container.querySelectorAll('.docker-table');
+        tables.forEach(table => {
+            const cols = table.querySelectorAll('th');
+            cols.forEach(col => {
+                // Prevent double initialization
+                if (col.querySelector('.resizer')) return;
+
+                const resizer = document.createElement('div');
+                resizer.classList.add('resizer');
+                resizer.style.height = `${table.offsetHeight}px`;
+                col.appendChild(resizer);
+
+                this._createResizableColumn(col, resizer);
+            });
+        });
+    }
+
+    _createResizableColumn(col, resizer) {
+        let x = 0;
+        let w = 0;
+        let nextCol = null;
+        let nextW = 0;
+
+        const mouseDownHandler = (e) => {
+            // Only left mouse button
+            if (e.button !== 0) return;
+
+            // Should adjust the two columns that the resizer divides
+            nextCol = col.nextElementSibling;
+            if (!nextCol) return; // Cannot resize if no neighbor
+
+            x = e.clientX;
+
+            const styles = window.getComputedStyle(col);
+            const nextStyles = window.getComputedStyle(nextCol);
+
+            w = parseFloat(styles.width);
+            nextW = parseFloat(nextStyles.width);
+
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+            resizer.classList.add('resizing');
+            e.preventDefault(); // Prevent text selection
+        };
+
+        const mouseMoveHandler = (e) => {
+            const dx = e.clientX - x;
+
+            // Limit checks could be added here (e.g. min-width)
+            if (w + dx > 30 && nextW - dx > 30) {
+                col.style.width = `${w + dx}px`;
+                nextCol.style.width = `${nextW - dx}px`;
+            }
+        };
+
+        const mouseUpHandler = () => {
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+            resizer.classList.remove('resizing');
+        };
+
+        resizer.addEventListener('mousedown', mouseDownHandler);
+        // Prevent click propagation to sorting if we implemented it
+        resizer.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    _updateDockerCard(data) {
+        const id = `host-${this._sanitizeId(data.name)}`;
+        const card = document.getElementById(id);
+        if (!card) return;
+
+        const docker = data.docker || {};
+        const isError = !!data.error || !!docker.error;
+
+        // Dot
+        card.querySelector('.status-dot').className = `status-dot ${isError ? 'error' : 'ok'}`;
+        if (isError) {
+            const ts = card.querySelector('.timestamp');
+            if (ts) ts.textContent = `Error: ${data.error || docker.error}`;
+            return;
+        }
+
+        const summary = docker.summary || {};
+        const containers = docker.containers || [];
+        const images = docker.images || [];
+
+        // Summary metrics
+        const containersData = summary["Containers"] || { TotalCount: 0, Running: 0, Size: "0B" };
+        const imagesData = summary["Images"] || { TotalCount: 0, Size: "0B" };
+        const buildCacheData = summary["Build Cache"] || { Size: "0B" };
+        const volumesData = summary["Local Volumes"] || { TotalCount: 0, Size: "0B" };
+
+        card.querySelector('.containers-count').textContent = `${containersData.Running || 0} / ${containersData.TotalCount || 0}`;
+        card.querySelector('.images-count').textContent = imagesData.TotalCount || 0;
+        card.querySelector('.images-size').textContent = imagesData.Size || "0B";
+        card.querySelector('.build-cache-size').textContent = buildCacheData.Size || "0B";
+        card.querySelector('.volumes-count').textContent = volumesData.TotalCount || 0;
+        card.querySelector('.volumes-size').textContent = volumesData.Size || "0B";
+
+        // Update Badges
+        card.querySelector('.containers-total-badge').textContent = containers.length;
+        card.querySelector('.images-total-badge').textContent = images.length;
+
+        // Containers Table
+        const containersBody = card.querySelector('.containers-table tbody');
+        if (containersBody) {
+            if (containers.length === 0) {
+                containersBody.innerHTML = '<tr><td colspan="5">No containers found.</td></tr>';
+            } else {
+                containersBody.innerHTML = containers.map(c => {
+                    let statusClass = '';
+                    const s = (c.Status || '').toLowerCase();
+                    if (s.startsWith('up')) statusClass = 'status-text-success';
+                    else if (s.includes('exit')) statusClass = 'status-text-error';
+                    else if (s.includes('pause')) statusClass = 'status-text-warning';
+
+                    return `
+                    <tr>
+                        <td title="${c.ID}">${c.ID.substring(0, 12)}</td>
+                        <td title="${c.Image}">${c.Image.substring(0, 30)}</td>
+                        <td class="${statusClass}" title="${c.Status}">${c.Status}</td>
+                        <td title="${c.Names}">${c.Names}</td>
+                        <td title="${c.Size}">${c.Size}</td>
+                    </tr>
+                `}).join('');
+            }
+        }
+
+        // Images Table
+        const imagesBody = card.querySelector('.images-table tbody');
+        if (imagesBody) {
+            if (images.length === 0) {
+                imagesBody.innerHTML = '<tr><td colspan="4">No images found.</td></tr>';
+            } else {
+                imagesBody.innerHTML = images.map(i => `
+                    <tr>
+                        <td title="${i.Repository}">${i.Repository}</td>
+                        <td title="${i.Tag}">${i.Tag}</td>
+                        <td title="${i.ID}">${i.ID.substring(7, 19)}</td>
+                        <td title="${i.Size}">${i.Size}</td>
+                    </tr>
+                `).join('');
+            }
         }
 
         // Timestamp

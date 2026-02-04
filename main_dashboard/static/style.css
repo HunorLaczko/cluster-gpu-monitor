@@ -375,3 +375,107 @@ footer {
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(148, 163, 184, 0.5);
 }
+/* Docker View Styles */
+
+.docker-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    align-items: center;
+}
+
+.docker-host-card {
+    max-width: 1000px !important;
+}
+
+.docker-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.docker-details-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.docker-details-section details {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 0.5rem;
+    overflow: hidden;
+}
+
+.docker-details-section summary {
+    padding: 0.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none; /* Hide default marker */
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.docker-details-section summary::-webkit-details-marker {
+    display: none;
+}
+
+.docker-details-section summary:before {
+    content: "▶";
+    font-size: 0.8em;
+    transition: transform 0.2s;
+    color: var(--accent-color);
+}
+
+.docker-details-section details[open] summary {
+    border-bottom: 1px solid var(--card-border);
+    margin-bottom: 0.5rem;
+}
+
+.docker-details-section details[open] summary:before {
+    transform: rotate(90deg);
+}
+
+.containers-total-badge, .images-total-badge {
+    background-color: var(--accent-color);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    margin-left: auto;
+}
+
+.docker-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+.docker-table th {
+    text-align: left;
+    padding: 0.75rem 0.5rem;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--card-border);
+    font-weight: 500;
+}
+
+.docker-table td {
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.05);
+    color: var(--text-primary);
+    vertical-align: top;
+}
+
+.docker-table tr:last-child td {
+    border-bottom: none;
+}
+
+.docker-table td[title] {
+    cursor: help;
+    text-decoration: underline dotted rgba(148, 163, 184, 0.5);
+}

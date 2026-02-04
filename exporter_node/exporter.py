@@ -8,6 +8,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import time
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,12 +16,135 @@ logger = logging.getLogger(__name__)
 
 # Constants
 CPU_MEASUREMENT_INTERVAL_SECONDS = 0.0  # Non-blocking
+DOCKER_SOCKET_PATH = "/var/run/docker.sock"
+# Docker cache settings
+DOCKER_CACHE_INTERVAL_SECONDS = int(os.environ.get("DOCKER_METRICS_INTERVAL_SECONDS", 60))
 
 app = FastAPI(
     title="System & GPU Metrics Exporter",
     description="Exposes system CPU, RAM, and NVIDIA GPU metrics.",
-    version="1.0.3"
+    version="1.0.5"
 )
+
+# Global variables for caching
+_metrics_cache = None
+_cache_timestamp = 0
+CACHE_TTL_SECONDS = 2.0
+
+# Docker specific cache
+_docker_cache: Dict[str, Any] = {"error": "Loading..."}
+_docker_lock = threading.Lock()
+
+def get_docker_metrics() -> Dict[str, Any]:
+    """Collects Docker statistics using docker CLI."""
+    # check if docker socket exists first to avoid unnecessary subprocess calls
+    if not os.path.exists(DOCKER_SOCKET_PATH):
+         return {"error": "Docker socket not found"}
+
+    try:
+        import subprocess
+        import json
+        
+        # 1. Containers
+        # docker container ls -a --format '{{json .}}'
+        cmd_containers = ["docker", "container", "ls", "-a", "--format", "{{json .}}"]
+        output_containers = subprocess.check_output(cmd_containers, stderr=subprocess.STDOUT).decode('utf-8')
+        containers = []
+        running_count = 0
+        
+        for line in output_containers.strip().split('\n'):
+            if line:
+                try:
+                    c = json.loads(line)
+                    containers.append(c)
+                    # Robust check for running status
+                    state = c.get('State', '').lower()
+                    status = c.get('Status', '').lower()
+                    if state == 'running' or status.startswith('up'):
+                        running_count += 1
+                except json.JSONDecodeError:
+                    pass
+        
+        # 2. Images
+        # docker image ls --format '{{json .}}'
+        cmd_images = ["docker", "image", "ls", "--format", "{{json .}}"]
+        output_images = subprocess.check_output(cmd_images, stderr=subprocess.STDOUT).decode('utf-8')
+        images = []
+        for line in output_images.strip().split('\n'):
+             if line:
+                try:
+                    images.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+
+        # 3. Disk Usage Summary (Build Cache etc)
+        # docker system df --format '{{json .}}'
+        cmd_df = ["docker", "system", "df", "--format", "{{json .}}"]
+        output_df = subprocess.check_output(cmd_df, stderr=subprocess.STDOUT).decode('utf-8')
+        # Output is one JSON object per line: Images, Containers, Local Volumes, Build Cache
+        df_summary = {}
+        for line in output_df.strip().split('\n'):
+             if line:
+                try:
+                    data = json.loads(line)
+                    if "Type" in data:
+                        df_summary[data["Type"]] = data
+                except json.JSONDecodeError:
+                    pass
+        
+        # OVERRIDE: Manually inject the accurate running count into the summary
+        # If 'Containers' key missing, create it.
+        if "Containers" not in df_summary:
+            df_summary["Containers"] = {"TotalCount": len(containers), "Running": running_count, "Size": "0B"}
+        else:
+            df_summary["Containers"]["Running"] = running_count
+            df_summary["Containers"]["TotalCount"] = len(containers)
+
+
+        return {
+            "containers": containers,
+            "images": images,
+            "summary": df_summary
+        }
+
+    except FileNotFoundError:
+        return {"error": "docker CLI not found"}
+    except subprocess.CalledProcessError as e:
+        logger.warning("Error running docker command: %s", e.output)
+        return {"error": f"Docker command failed: {e.output.decode('utf-8', errors='ignore')}"}
+    except Exception as e:
+        logger.warning("Error collecting docker metrics: %s", e, exc_info=True)
+        return {"error": str(e)}
+
+def _docker_collector_thread():
+    """Background thread to collect Docker metrics periodically."""
+    global _docker_cache
+    logger.info(f"Starting Docker metrics collector (Interval: {DOCKER_CACHE_INTERVAL_SECONDS}s)")
+    
+    while True:
+        try:
+            start_time = time.time()
+            data = get_docker_metrics()
+            
+            with _docker_lock:
+                _docker_cache = data
+            
+            elapsed = time.time() - start_time
+            logger.debug(f"Docker metrics collected in {elapsed:.2f}s")
+            
+            # Sleep remainder of interval
+            sleep_time = max(1.0, DOCKER_CACHE_INTERVAL_SECONDS - elapsed)
+            time.sleep(sleep_time)
+            
+        except Exception as e:
+            logger.error(f"Error in Docker collector thread: {e}", exc_info=True)
+            time.sleep(10) # Error backoff
+
+@app.on_event("startup")
+async def startup_event():
+    # Start the background thread
+    t = threading.Thread(target=_docker_collector_thread, daemon=True)
+    t.start()
 
 def get_disk_metrics() -> List[Dict[str, Any]]:
     """Collects disk usage for critical paths and /data-local mounts."""
@@ -215,10 +339,6 @@ def get_gpu_metrics() -> List[Dict[str, Any]]:
         return [{"error": f"Could not retrieve GPU metrics: {str(e)}"}]
     return gpu_data_list
 
-# Global cache tracking
-_metrics_cache = None
-_cache_timestamp = 0
-CACHE_TTL_SECONDS = 2.0
 
 @app.get("/metrics", response_model=Optional[Dict[str, Any]])
 async def read_metrics():
@@ -233,12 +353,17 @@ async def read_metrics():
         hostname = platform.node()
         system_info = get_system_metrics()
         gpu_info = get_gpu_metrics()
+        
+        # Use simple global caching for Docker to prevent blocking
+        with _docker_lock:
+             docker_info = _docker_cache
 
         result = {
             "hostname": hostname,
             "timestamp_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "system": system_info,
             "gpus": gpu_info,
+            "docker": docker_info,
         }
         
         _metrics_cache = result
