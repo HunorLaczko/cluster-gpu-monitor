@@ -249,7 +249,16 @@ def get_system_metrics() -> Dict[str, Any]:
             "load_average_5m": round(load_avg_5, 2) if load_avg_5 is not None else None,
             "load_average_15m": round(load_avg_15, 2) if load_avg_15 is not None else None,
             "load_max": cpu_logical_count if cpu_logical_count is not None else None,
+            "load_max": cpu_logical_count if cpu_logical_count is not None else None,
             "disks": get_disk_metrics(),
+            "users": [
+                {
+                    "name": u.name,
+                    "terminal": u.terminal or "N/A",
+                    "host": u.host or "N/A",
+                    "started": u.started
+                } for u in psutil.users()
+            ],
         }
     except Exception as e:
         logger.error(f"Error getting system metrics: {e}", exc_info=True)

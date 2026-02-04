@@ -742,3 +742,7 @@ footer {
     font-weight: bold;
     text-shadow: 0 0 4px rgba(0, 255, 0, 0.4);
 }
+/* Logged-in Users Section */
+.user-item strong {
+    color: var(--accent-color);
+}

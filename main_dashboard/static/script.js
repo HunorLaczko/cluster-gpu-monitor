@@ -583,6 +583,9 @@ class DashboardApp {
                 </div>
             </div>
 
+            <div class="section-title">Logged-in Users</div>
+            <div class="users-container metrics-grid"></div>
+
             <div class="section-title">GPU Status</div>
             <div class="gpus-container"></div>
             
@@ -641,6 +644,30 @@ class DashboardApp {
                     loadBar.style.width = '0%';
                 }
             }
+        }
+
+        // Users
+        const usersContainer = card.querySelector('.users-container');
+        usersContainer.innerHTML = '';
+        if (system.users && system.users.length > 0) {
+            system.users.forEach(user => {
+                const uEl = document.createElement('div');
+                uEl.className = 'metric-item user-item';
+                const startedDate = new Date(user.started * 1000).toLocaleTimeString();
+                uEl.innerHTML = `
+                    <strong>${this._escapeHtml(user.name)}</strong>
+                    <div style="font-size:0.85em; color:var(--text-secondary);">
+                        ${this._escapeHtml(user.terminal)} (${this._escapeHtml(user.host)})
+                    </div>
+                     <div style="font-size:0.8em; color:var(--text-tertiary); margin-top:2px;">
+                        Login: ${startedDate}
+                    </div>
+                `;
+                usersContainer.appendChild(uEl);
+            });
+        } else {
+            // Optional: Show "No users logged in" message
+            usersContainer.innerHTML = '<div class="metric-item" style="grid-column: 1 / -1; text-align:center; color:var(--text-secondary); font-style:italic;">No users logged in</div>';
         }
 
         // GPUs

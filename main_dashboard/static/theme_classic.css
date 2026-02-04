@@ -891,3 +891,7 @@ footer {
     /* Dark Green - readable on light bg */
     font-weight: bold;
 }
+/* Logged-in Users Section */
+.user-item strong {
+    color: var(--c-primary);
+}
