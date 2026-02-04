@@ -23,13 +23,15 @@ def get_ssh_password(host_details):
     """Prompt for SSH password if not using key-based auth or if key is passphrase protected."""
     return getpass(f"Enter SSH password for {host_details['username']}@{host_details['address']}: ")
 
-def deploy_to_host(host_details):
+def deploy_to_host(host_details, global_ssh_password=None, global_sudo_password=None):
     """Deploys the exporter to a single host."""
     logger.info(f"Starting deployment to host: {host_details['name']} ({host_details['address']})")
 
     connection_kwargs = {}
     if host_details.get("ssh_key_path"):
         connection_kwargs['key_filename'] = os.path.expanduser(host_details["ssh_key_path"])
+    elif global_ssh_password:
+        connection_kwargs['password'] = global_ssh_password
     else:
         # Prompt for password if no key is provided
         password = get_ssh_password(host_details)
@@ -37,7 +39,12 @@ def deploy_to_host(host_details):
     
 
     try:
-        config = Config(overrides={'sudo': {'password': getpass("Enter SUDO password: ")}})
+        if global_sudo_password:
+            sudo_pass = global_sudo_password
+        else:
+            sudo_pass = getpass(f"Enter SUDO password for {host_details['username']}@{host_details['address']}: ")
+            
+        config = Config(overrides={'sudo': {'password': sudo_pass}})
         c = Connection(
             host_details['address'], 
             user=host_details['username'], 
@@ -169,10 +176,18 @@ def main():
         logger.info("No hosts configured in hosts_config.json. Exiting.")
         return
 
+    use_global_creds = input("Do you want to use the same credentials for all servers? (y/n): ").strip().lower() == 'y'
+    global_ssh_pass = None
+    global_sudo_pass = None
+
+    if use_global_creds:
+        global_ssh_pass = getpass("Enter SSH password for all servers: ")
+        global_sudo_pass = getpass("Enter SUDO password for all servers: ")
+
     successful_deployments = 0
     for host_details in hosts:
         logger.info(f"\n--- Deploying to: {host_details.get('name', host_details['address'])} ---")
-        if deploy_to_host(host_details):
+        if deploy_to_host(host_details, global_ssh_password=global_ssh_pass, global_sudo_password=global_sudo_pass):
             successful_deployments += 1
         else:
             logger.error(f"Failed to deploy to {host_details.get('name', host_details['address'])}.")
